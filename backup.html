@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NMap Sync & Backup</title>
+    
+    <script src="dexie.min.js"></script>
+
+    <style>
+        :root {
+            --primary-color: #1a73e8;
+            --primary-glow: rgba(26, 115, 232, 0.15);
+            --success-color: #34a853;
+            --success-glow: rgba(52, 168, 83, 0.15);
+            --error-color: #ea4335;
+            --background-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            --surface-color: rgba(30, 41, 59, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--background-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: var(--surface-color);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        header {
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 16px;
+        }
+
+        header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .card {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #ffffff;
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-primary);
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .btn {
+            flex: 1;
+            background: var(--primary-color);
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background-color 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background: #1557b0;
+        }
+
+        .btn-send {
+            background-color: var(--primary-color);
+        }
+
+        .btn-receive {
+            background-color: var(--success-color);
+        }
+
+        .btn-receive:hover {
+            background-color: #2b8a44;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: #ffffff;
+            flex: none;
+            width: 100%;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn:disabled {
+            background: #475569;
+            color: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .log-container {
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 11px;
+            color: #cbd5e1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+        }
+
+        .log-entry {
+            line-height: 1.4;
+        }
+
+        .log-time {
+            color: #64748b;
+            margin-right: 6px;
+        }
+
+        .log-info { color: #38bdf8; }
+        .log-success { color: #4ade80; }
+        .log-error { color: #f87171; }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #ffffff;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .icon {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>NMap Sync & Backup</h1>
+            <p>Share Saved Places & Offline Maps with Friends</p>
+        </header>
+
+        <!-- Credentials Card -->
+        <div class="card">
+            <div class="card-title">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span>Pairing Usernames</span>
+            </div>
+            <div class="form-group">
+                <label for="local-username">Your Username</label>
+                <input type="text" id="local-username" placeholder="Enter your username">
+            </div>
+            <div class="form-group">
+                <label for="friend-username">Friend's Username</label>
+                <input type="text" id="friend-username" placeholder="Enter friend's username">
+            </div>
+        </div>
+
+        <!-- Sync Selection Card -->
+        <div class="card">
+            <div class="card-title">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
+                <span>Select Data to Transfer</span>
+            </div>
+            <div class="checkbox-group">
+                <label class="checkbox-item">
+                    <input type="checkbox" id="chk-places" checked>
+                    Saved Places
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="chk-snapshots" checked>
+                    Map Snapshots (Screenshots)
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="chk-areas" checked>
+                    Offline Regions & Tiles (Large size)
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="chk-routes" checked>
+                    Saved Routes
+                </label>
+            </div>
+        </div>
+
+        <!-- Action Row -->
+        <div class="btn-row">
+            <button class="btn btn-send" id="btn-send" onclick="handleSend()">
+                <span>Send Data</span>
+            </button>
+            <button class="btn btn-receive" id="btn-receive" onclick="handleReceive()">
+                <span>Receive Data</span>
+            </button>
+        </div>
+
+        <!-- Sync Log -->
+        <div class="card">
+            <div class="card-title">Logs & Events</div>
+            <div id="log-container" class="log-container">
+                <div class="log-entry"><span class="log-time">--:--:--</span><span class="log-info">Awaiting your send or receive instruction...</span></div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <button class="btn btn-secondary" onclick="window.location.href='lay.html'">
+            <svg class="icon" viewBox="0 0 24 24" style="transform: rotate(180deg);"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            Back to NMap
+        </button>
+    </div>
+
+    <script>
+        // --- Database Setup ---
+        const db = new Dexie("OfflineMapDB_v4");
+        db.version(3).stores({
+            snapshots: '++id, timestamp, name',
+            places: '++id, name, lat, lng',
+            areas: '++id, timestamp, name',
+            tiles: 'key, areaId',
+            routes: 'placeId'
+        });
+
+        // Load saved usernames
+        document.getElementById('local-username').value = localStorage.getItem('nmap_username') || '';
+        document.getElementById('friend-username').value = localStorage.getItem('nmap_friend_username') || '';
+
+        // Logger Function
+        function log(message, type = 'info') {
+            const container = document.getElementById('log-container');
+            const now = new Date();
+            const timeStr = now.toTimeString().split(' ')[0];
+            
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'log-time';
+            timeSpan.innerText = timeStr;
+            
+            const msgSpan = document.createElement('span');
+            msgSpan.className = `log-${type}`;
+            msgSpan.innerText = message;
+            
+            entry.appendChild(timeSpan);
+            entry.appendChild(msgSpan);
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        function base64ToBlob(base64Data) {
+            const parts = base64Data.split(';base64,');
+            const contentType = parts[0].split(':')[1];
+            const raw = window.atob(parts[1]);
+            const rawLength = raw.length;
+            const uInt8Array = new Uint8Array(rawLength);
+            for (let i = 0; i < rawLength; ++i) {
+                uInt8Array[i] = raw.charCodeAt(i);
+            }
+            return new Blob([uInt8Array], { type: contentType });
+        }
+
+        async function handleSend() {
+            const myUsername = document.getElementById('local-username').value.trim().toLowerCase();
+            const friendUsername = document.getElementById('friend-username').value.trim().toLowerCase();
+
+            if (!myUsername || !friendUsername) {
+                log("Both usernames are required!", "error");
+                alert("Please enter both Your Username and Friend's Username!");
+                return;
+            }
+
+            localStorage.setItem('nmap_username', myUsername);
+            localStorage.setItem('nmap_friend_username', friendUsername);
+
+            const options = {
+                places: document.getElementById('chk-places').checked,
+                snapshots: document.getElementById('chk-snapshots').checked,
+                areas: document.getElementById('chk-areas').checked,
+                tiles: document.getElementById('chk-areas').checked, // Tiles map to areas
+                routes: document.getElementById('chk-routes').checked
+            };
+
+            const sendBtn = document.getElementById('btn-send');
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<div class="spinner"></div> Sending...';
+
+            log("Gathering data from local database...", "info");
+
+            try {
+                const payload = {};
+
+                if (options.places) payload.places = await db.places.toArray();
+                if (options.snapshots) payload.snapshots = await db.snapshots.toArray();
+                if (options.areas) payload.areas = await db.areas.toArray();
+                if (options.routes) payload.routes = await db.routes.toArray();
+                
+                if (options.tiles) {
+                    log("Exporting offline tiles (this may take a moment)...", "info");
+                    const allTiles = await db.tiles.toArray();
+                    payload.tiles = [];
+                    for (const tile of allTiles) {
+                        if (tile.blob) {
+                            const b64 = await blobToBase64(tile.blob);
+                            payload.tiles.push({
+                                key: tile.key,
+                                areaId: tile.areaId,
+                                base64: b64
+                            });
+                        }
+                    }
+                }
+
+                log(`Uploading data packet to file sharing service...`, "info");
+                const formData = new FormData();
+                const jsonBlob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+                formData.append('file', jsonBlob, 'nmap_backup.json');
+
+                // POST to file.io (expires in 1 day)
+                const uploadRes = await fetch('https://file.io/?expires=1d', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadRes.ok) throw new Error("File.io API Error");
+                const uploadResult = await uploadRes.json();
+                if (!uploadResult.success) throw new Error(uploadResult.message || "File upload failed");
+
+                const downloadLink = uploadResult.link;
+                log(`Data uploaded! Notifying friend: "${friendUsername}"...`, "info");
+
+                // Put pointer into KVDB inbox for friend
+                const kvdbUrl = `https://kvdb.io/anonymous/nmap_inbox_${friendUsername}`;
+                const kvdbPayload = {
+                    sender: myUsername,
+                    link: downloadLink,
+                    timestamp: Date.now()
+                };
+
+                const kvdbRes = await fetch(kvdbUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(kvdbPayload)
+                });
+
+                if (!kvdbRes.ok) throw new Error("KVDB notification failed");
+
+                log("Data sent successfully! Ask your friend to click 'Receive' now.", "success");
+                alert("Data sent! Your friend can now click 'Receive Data' to import it.");
+            } catch (err) {
+                console.error(err);
+                log(`Failed to send data: ${err.message}`, "error");
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.innerText = "Send Data";
+            }
+        }
+
+        async function handleReceive() {
+            const myUsername = document.getElementById('local-username').value.trim().toLowerCase();
+            const friendUsername = document.getElementById('friend-username').value.trim().toLowerCase();
+
+            if (!myUsername || !friendUsername) {
+                log("Both usernames are required!", "error");
+                alert("Please enter both Your Username and Friend's Username!");
+                return;
+            }
+
+            localStorage.setItem('nmap_username', myUsername);
+            localStorage.setItem('nmap_friend_username', friendUsername);
+
+            const options = {
+                places: document.getElementById('chk-places').checked,
+                snapshots: document.getElementById('chk-snapshots').checked,
+                areas: document.getElementById('chk-areas').checked,
+                tiles: document.getElementById('chk-areas').checked,
+                routes: document.getElementById('chk-routes').checked
+            };
+
+            const receiveBtn = document.getElementById('btn-receive');
+            receiveBtn.disabled = true;
+            receiveBtn.innerHTML = '<div class="spinner"></div> Receiving...';
+
+            log(`Checking inbox for messages from "${friendUsername}"...`, "info");
+
+            try {
+                const kvdbUrl = `https://kvdb.io/anonymous/nmap_inbox_${myUsername}`;
+                const kvdbRes = await fetch(kvdbUrl);
+                
+                if (!kvdbRes.ok) {
+                    if (kvdbRes.status === 404) throw new Error("No data package found in your inbox.");
+                    throw new Error("Failed to contact notification server");
+                }
+
+                const inboxItem = await kvdbRes.json();
+                if (inboxItem.sender !== friendUsername) {
+                    throw new Error(`The package in your inbox is from "${inboxItem.sender}", not "${friendUsername}".`);
+                }
+
+                log("Data package reference found! Downloading data file...", "info");
+
+                const dataRes = await fetch(inboxItem.link);
+                if (!dataRes.ok) throw new Error("Failed to download database file from backup server.");
+                const payload = await dataRes.json();
+
+                log("Data downloaded successfully! Merging into local database...", "info");
+
+                let importResults = "";
+
+                if (options.places && payload.places) {
+                    let count = 0;
+                    for (const item of payload.places) {
+                        const exists = await db.places.get(item.id);
+                        if (!exists) {
+                            await db.places.put(item);
+                            count++;
+                        }
+                    }
+                    importResults += `Places: ${count}. `;
+                }
+
+                if (options.snapshots && payload.snapshots) {
+                    let count = 0;
+                    for (const item of payload.snapshots) {
+                        const exists = await db.snapshots.get(item.id);
+                        if (!exists) {
+                            await db.snapshots.put(item);
+                            count++;
+                        }
+                    }
+                    importResults += `Snapshots: ${count}. `;
+                }
+
+                if (options.areas && payload.areas) {
+                    let count = 0;
+                    for (const item of payload.areas) {
+                        const exists = await db.areas.get(item.id);
+                        if (!exists) {
+                            await db.areas.put(item);
+                            count++;
+                        }
+                    }
+                    importResults += `Areas: ${count}. `;
+                }
+
+                if (options.routes && payload.routes) {
+                    let count = 0;
+                    for (const item of payload.routes) {
+                        const exists = await db.routes.get(item.placeId);
+                        if (!exists) {
+                            await db.routes.put(item);
+                            count++;
+                        }
+                    }
+                    importResults += `Routes: ${count}. `;
+                }
+
+                if (options.tiles && payload.tiles) {
+                    log("Importing offline map tiles (this may take a minute)...", "info");
+                    let count = 0;
+                    for (const item of payload.tiles) {
+                        const exists = await db.tiles.get(item.key);
+                        if (!exists && item.base64) {
+                            const blob = base64ToBlob(item.base64);
+                            await db.tiles.put({
+                                key: item.key,
+                                areaId: item.areaId,
+                                blob: blob
+                            });
+                            count++;
+                        }
+                    }
+                    importResults += `Tiles: ${count}. `;
+                }
+
+                // Delete the inbox key now that we successfully downloaded it
+                await fetch(kvdbUrl, { method: 'DELETE' });
+
+                log(`Import completed successfully! ${importResults}`, "success");
+                alert(`Data imported successfully!\n${importResults}`);
+            } catch (err) {
+                console.error(err);
+                log(`Failed to receive data: ${err.message}`, "error");
+            } finally {
+                receiveBtn.disabled = false;
+                receiveBtn.innerText = "Receive Data";
+            }
+        }
+    </script>
+</body>
+</html>

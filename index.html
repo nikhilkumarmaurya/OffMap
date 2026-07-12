@@ -1,0 +1,3185 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NMap - Offline Map & Tracker</title>
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="leaflet.css">
+    <script src="leaflet.js"></script>
+
+    <script src="dexie.min.js"></script>
+
+    <script src="html2canvas.min.js"></script>
+
+
+    <style>
+        :root {
+            --primary-color: #1a73e8;
+            --secondary-color: #fff;
+            --accent-color: #ea4335;
+            --background-color: #f8f9fa;
+            --surface-color: #ffffff;
+            --text-primary: #202124;
+            --text-secondary: #5f6368;
+            --shadow-elevation-2: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+            --shadow-elevation-6: 0 4px 5px 0 rgba(60, 64, 67, 0.14), 0 1px 10px 0 rgba(60, 64, 67, 0.12), 0 2px 4px -1px rgba(60, 64, 67, 0.2);
+
+            /* Viewer Specific Vars */
+            --viewer-bg: #0e0e0e;
+            --viewer-panel: rgba(30, 30, 30, 0.85);
+            --viewer-text: #e8eaed;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Custom SVG Icon Styles */
+        .icon {
+            width: 24px;
+            height: 24px;
+            fill: currentColor;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        .icon-sm {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* Header */
+        header {
+            background-color: var(--surface-color);
+            color: var(--text-primary);
+            padding: 12px 16px;
+            box-shadow: var(--shadow-elevation-2);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        header h1 {
+            font-size: 18px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-toggle-map {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: inherit;
+            flex-shrink: 0;
+            transition: background-color 0.2s;
+        }
+
+
+
+        /* Main Content */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* Map Container - Height Increased by 30% (50vh -> 65vh) */
+        #map-container {
+            height: 65vh;
+            width: 100%;
+            position: relative;
+            z-index: 1;
+            display: none;
+            transition: height 0.3s ease;
+        }
+
+        #map-container.visible {
+            display: block;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+
+        /* Gallery Section */
+        #gallery-section {
+            padding: 16px;
+            background-color: var(--background-color);
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #gallery-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            padding-bottom: 100px;
+        }
+
+        /* Snapshot Card */
+        .snapshot-card {
+            background: var(--surface-color);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--shadow-elevation-2);
+            display: flex;
+            flex-direction: row;
+            height: 110px;
+            transition: transform 0.2s;
+            position: relative;
+        }
+
+        .snapshot-card:active {
+            transform: scale(0.98);
+        }
+
+        .snapshot-img {
+            width: 110px;
+            height: 100%;
+            object-fit: cover;
+            background-color: #eee;
+            border-right: 1px solid #eee;
+        }
+
+        .snapshot-info {
+            padding: 10px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .snapshot-name {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 2px;
+            color: var(--text-primary);
+        }
+
+        .snapshot-coords {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 2px;
+        }
+
+        .distance-badge {
+            display: inline-block;
+            background: #e8f0fe;
+            color: var(--primary-color);
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-weight: 500;
+            align-self: flex-start;
+        }
+
+        .card-actions {
+            margin-top: auto;
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn-text {
+            border: none;
+            background: none;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 4px 0;
+            font-family: inherit;
+        }
+
+        .btn-view {
+            color: var(--primary-color);
+        }
+
+        .btn-edit {
+            color: #f2a600;
+        }
+
+        .btn-delete {
+            color: var(--accent-color);
+        }
+
+        /* Floating Action Buttons */
+        .fab-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 1000;
+        }
+
+        .fab {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-elevation-6);
+            cursor: pointer;
+            border: none;
+            outline: none;
+            transition: transform 0.2s;
+        }
+
+        .fab:active {
+            transform: scale(0.95);
+        }
+
+        #capture-btn {
+            background-color: var(--primary-color);
+            color: white;
+            display: none;
+        }
+
+        #gps-btn {
+            background-color: var(--surface-color);
+            color: var(--text-secondary);
+            width: 48px;
+            height: 48px;
+        }
+
+        #gps-btn.active {
+            color: var(--primary-color);
+            background-color: #e8f0fe;
+        }
+
+        /* Loading Overlay */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            color: var(--primary-color);
+            flex-direction: column;
+            font-weight: 500;
+        }
+
+        .spinner {
+            border: 4px solid #e0e0e0;
+            border-radius: 50%;
+            border-top: 4px solid var(--primary-color);
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Toast */
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #323232;
+            color: #fff;
+            text-align: center;
+            border-radius: 4px;
+            padding: 14px 24px;
+            position: fixed;
+            z-index: 3000;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            font-size: 14px;
+            box-shadow: var(--shadow-elevation-6);
+        }
+
+        #toast.show {
+            visibility: visible;
+            animation: fadein 0.5s, fadeout 0.5s 2.5s;
+        }
+
+        /* =========================================
+           UPDATED OFFLINE VIEWER UI (Best UI)
+           ========================================= */
+        #viewer-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--viewer-bg);
+            z-index: 2500;
+            flex-direction: column;
+        }
+
+        /* Glassmorphism Header */
+        #viewer-header {
+            height: 60px;
+            background: var(--viewer-panel);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            color: var(--viewer-text);
+            justify-content: space-between;
+            z-index: 2502;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        #viewer-title {
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        /* Main Canvas Area */
+        #viewer-content {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+        }
+
+        #viewer-content:active {
+            cursor: grabbing;
+        }
+
+        /* Transform Layer handles Zoom/Pan */
+        #viewer-transform-layer {
+            position: absolute;
+            transform-origin: center center;
+            transition: transform 0.1s ease-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 
+           Wrapper for Image + Marker 
+           This is key for accurate tracking. The div shrinks to fit the image,
+           and the marker is positioned by % relative to this div.
+        */
+        #offline-map-wrapper {
+            position: relative;
+            display: inline-block;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        #viewer-img {
+            display: block;
+            max-width: 100vw;
+            /* Increased max-height to 90vh to allow taller images (30% increase logic) */
+            max-height: 90vh;
+            width: auto;
+            height: auto;
+            pointer-events: none;
+            border-radius: 4px;
+        }
+
+        /* Accurate Marker Styling */
+        #offline-user-marker {
+            position: absolute;
+            width: 32px;
+            height: 32px;
+            transform: translate(-50%, -50%);
+            /* Center the marker */
+            display: none;
+            z-index: 10;
+            transition: top 0.5s linear, left 0.5s linear;
+            /* Smooth interpolation */
+        }
+
+        /* Unified Location Marker Styles */
+        .user-location-marker-wrapper {
+            position: relative;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .user-location-pulse {
+            position: absolute;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(26, 115, 232, 0.25);
+            animation: location-pulse 2s infinite ease-out;
+            pointer-events: none;
+        }
+
+        @keyframes location-pulse {
+            0% {
+                transform: scale(0.6);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(2.2);
+                opacity: 0;
+            }
+        }
+
+        .user-location-circle {
+            width: 14px;
+            height: 14px;
+            background-color: var(--primary-color);
+            border: 2.5px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+            z-index: 2;
+        }
+
+        .user-location-arrow-container {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s ease-out;
+            z-index: 2;
+        }
+
+        /* Class for preventing default Leaflet background/border styles */
+        .user-location-leaflet-marker {
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+        }
+
+        /* Sidebar Drawer Styles */
+        .drawer {
+            position: fixed;
+            top: 0;
+            right: -300px;
+            width: 300px;
+            height: 100%;
+            background: var(--surface-color);
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.15);
+            z-index: 3000;
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .drawer.open {
+            right: 0;
+        }
+
+        .drawer-header {
+            padding: 16px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .drawer-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .drawer-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+        }
+
+        .drawer-body {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .drawer-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-decoration: none;
+            text-align: center;
+            box-shadow: var(--shadow-elevation-2);
+            transition: background-color 0.2s;
+        }
+
+        .drawer-btn:hover {
+            background: #1557b0;
+        }
+
+        .drawer-stat {
+            background: var(--background-color);
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .drawer-stat-val {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .drawer-stat-lbl {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+
+        /* Overlay */
+        .drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 2999;
+            display: none;
+            backdrop-filter: blur(2px);
+        }
+
+        .drawer-overlay.visible {
+            display: block;
+        }
+
+        /* Distance info card overlay */
+        .distance-info-card {
+            position: absolute;
+            bottom: 84px;
+            left: 16px;
+            right: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 12px 16px;
+            box-shadow: var(--shadow-elevation-6);
+            z-index: 1000;
+            font-family: inherit;
+            font-size: 13px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            transition: opacity 0.3s;
+        }
+
+        .distance-info-card.visible {
+            display: flex;
+        }
+
+        .distance-info-title {
+            font-weight: 700;
+            color: var(--text-primary);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .distance-info-content {
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        /* Status Pill */
+        #viewer-status {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            color: #fff;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            pointer-events: none;
+            z-index: 2501;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: background 0.3s;
+        }
+
+        /* Glassmorphism Footer */
+        #viewer-footer {
+            height: 80px;
+            background: var(--viewer-panel);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 2502;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Footer Buttons */
+        .viewer-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--viewer-text);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s;
+        }
+
+        .viewer-btn:active {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .zoom-controls {
+            display: flex;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 4px;
+            gap: 2px;
+        }
+
+        .zoom-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 6px;
+            background: transparent;
+            color: white;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .zoom-btn:active {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        @keyframes pulse {
+            0% {
+                width: 100%;
+                height: 100%;
+                opacity: 1;
+            }
+
+            100% {
+                width: 350%;
+                height: 350%;
+                opacity: 0;
+            }
+        }
+
+        @keyframes fadein {
+            from {
+                bottom: 0;
+                opacity: 0;
+            }
+
+            to {
+                bottom: 30px;
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeout {
+            from {
+                bottom: 30px;
+                opacity: 1;
+            }
+
+            to {
+                bottom: 0;
+                opacity: 0;
+            }
+        }
+
+        /* Route Planner Styles */
+        .route-banner {
+            position: absolute;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 30px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            box-shadow: var(--shadow-elevation-6);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+            transition: opacity 0.3s, transform 0.3s;
+            opacity: 0;
+            transform: translate(-50%, -10px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .route-banner.visible {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+
+        .route-card {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            right: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: var(--shadow-elevation-6);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: opacity 0.3s, transform 0.3s;
+            opacity: 0;
+            transform: translateY(20px);
+            pointer-events: auto;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .route-card.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .route-info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .route-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .route-meta {
+            display: flex;
+            gap: 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .route-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: 600;
+        }
+
+        .route-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-route-action {
+            flex: 1;
+            border: none;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            font-family: inherit;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .btn-route-action:active {
+            transform: scale(0.98);
+        }
+
+        .btn-route-clear {
+            background: #f1f3f4;
+            color: var(--text-primary);
+        }
+
+        .btn-route-clear:hover {
+            background: #e8eaed;
+        }
+
+        .btn-route-capture {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-route-capture:hover {
+            background: #1557b0;
+        }
+
+        /* Search Overlay Dropdown (Dropdown from header actions) */
+        .search-container {
+            position: absolute;
+            top: 100%;
+            /* align exactly under header */
+            left: 0;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            padding: 10px 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .search-container.visible {
+            display: flex;
+        }
+
+        .search-input-wrapper {
+            display: flex;
+            align-items: center;
+            background: #f1f3f4;
+            border-radius: 8px;
+            padding: 8px 12px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            gap: 8px;
+            height: 40px;
+        }
+
+        .search-icon {
+            width: 18px;
+            height: 18px;
+            fill: var(--text-secondary);
+            flex-shrink: 0;
+        }
+
+        #search-input {
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 13px;
+            color: var(--text-primary);
+            width: 100%;
+            font-family: inherit;
+        }
+
+        .search-results {
+            position: relative;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: transparent;
+            max-height: 250px;
+            overflow-y: auto;
+            display: none;
+            flex-direction: column;
+            z-index: 2001;
+            margin-top: 6px;
+        }
+
+        .search-results.visible {
+            display: flex;
+        }
+
+        .search-result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            font-size: 13px;
+            color: var(--text-primary);
+            cursor: pointer;
+            border-bottom: 1px solid #f1f3f4;
+            transition: background 0.2s;
+            text-align: left;
+            gap: 8px;
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-item:hover {
+            background: rgba(26, 115, 232, 0.04);
+        }
+
+        .place-name-text {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn-search-route {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+
+        .btn-search-route:hover {
+            background: #1557b0;
+        }
+
+        .custom-place-tooltip {
+            background-color: #8e24aa !important;
+            border: 1px solid #8e24aa !important;
+            color: #ffffff !important;
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            border-radius: 4px !important;
+            box-shadow: var(--shadow-elevation-2) !important;
+            padding: 4px 8px !important;
+        }
+
+        .custom-place-tooltip:before {
+            border-top-color: #8e24aa !important;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header style="position: relative;">
+        <h1>NMap</h1>
+        <div class="header-actions">
+            <!-- Search Toggle Button (Initially Hidden, Toggles search container) -->
+            <button class="btn-toggle-map" id="search-toggle-btn" onclick="toggleSearchBar()"
+                style="display: none; background-color: var(--text-secondary);" title="Search places">
+                <!-- SVG Search Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path
+                        d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+                        fill="white" />
+                </svg>
+            </button>
+
+            <!-- Vibration Navigation Toggle Button (Initially Hidden next to search) -->
+            <button class="btn-toggle-map" id="vibrate-toggle-btn" onclick="toggleVibrationNavigation()"
+                style="display: none; background-color: var(--text-secondary);" title="Vibrate on Turns">
+                <!-- SVG Phone Vibrate Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path
+                        d="M16.5 3h-9C6.12 3 5 4.12 5 5.5v13C5 19.88 6.12 21 7.5 21h9c1.38 0 2.5-1.12 2.5-2.5v-13C19 4.12 17.88 3 16.5 3zm.5 15.5c0 .28-.22.5-.5.5h-9c-.28 0-.5-.22-.5-.5v-13c0-.28.22-.5.5-.5h9c.28 0 .5.22.5.5v13zM12 19c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"
+                        fill="white" />
+                    <path
+                        d="M2 9.5c-.55 0-1 .45-1 1v3c0 .55.45 1 1 1s1-.45 1-1v-3c0-.55-.45-1-1-1zm2-3c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1s1-.45 1-1v-8c0-.55-.45-1-1-1z"
+                        fill="white" />
+                    <path
+                        d="M22 9.5c-.55 0-1 .45-1 1v3c0 .55.45 1 1 1s1-.45 1-1v-3c0-.55-.45-1-1-1zm-2-3c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1s1-.45 1-1v-8c0-.55-.45-1-1-1z"
+                        fill="white" />
+                </svg>
+            </button>
+
+            <!-- Search Bar Overlay Dropdown under Header -->
+            <div id="search-container" class="search-container">
+                <div class="search-input-wrapper">
+                    <!-- SVG Search Icon -->
+                    <svg class="search-icon" viewBox="0 0 24 24">
+                        <path
+                            d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+                    </svg>
+                    <input type="text" id="search-input" placeholder="Search saved places..." oninput="onSearchInput()">
+                </div>
+                <div id="search-results" class="search-results"></div>
+            </div>
+
+            <button class="btn-toggle-map" id="add-place-btn" onclick="toggleAddPlaceMode()"
+                style="display: none; background-color: var(--text-secondary);" title="Add Place">
+                <!-- SVG Pin Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path
+                        d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"
+                        fill="white" />
+                </svg>
+            </button>
+            <button class="btn-toggle-map" id="route-mode-btn" onclick="toggleRouteMode()"
+                style="display: none; background-color: var(--text-secondary);" title="Route Planner">
+                <!-- SVG Route Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path
+                        d="M22.41 12.3l-9-9c-.39-.39-1.02-.39-1.41 0l-9 9c-.39.39-.39 1.02 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9c.39-.39.39-1.02 0-1.41zM14 18.5V15h-4v-3h4V8.5L18.5 12 14 18.5z"
+                        fill="white" />
+                </svg>
+            </button>
+            <button class="btn-toggle-map" id="toggle-map-btn" onclick="toggleMap()" title="Show Map">
+                <!-- SVG Map Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path
+                        d="M20.5 3l-6 2.25L8.5 3 3.5 4.75v15.5l6-2.25 6 2.25 5-1.75V3zM15 17l-6-2.25V5.25l6 2.25V17z" />
+                </svg>
+            </button>
+
+            <!-- Hamburger Menu Button -->
+            <button class="btn-toggle-map" id="menu-btn" onclick="toggleDrawer(true)"
+                style="background-color: var(--text-secondary);" title="Menu">
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" fill="white" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Side Menu Drawer & Overlay -->
+    <div id="drawer-overlay" class="drawer-overlay" onclick="toggleDrawer(false)"></div>
+    <div id="drawer" class="drawer">
+        <div class="drawer-header">
+            <span class="drawer-title">Menu Options</span>
+            <button class="drawer-close" onclick="toggleDrawer(false)">
+                <!-- Close SVG Icon -->
+                <svg class="icon" viewBox="0 0 24 24" style="width:24px; height:24px;">
+                    <path
+                        d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
+            </button>
+        </div>
+        <div class="drawer-body">
+            <div class="drawer-stat">
+                <div id="drawer-places-count" class="drawer-stat-val">0</div>
+                <div class="drawer-stat-lbl">Saved Places</div>
+            </div>
+            <div class="drawer-stat">
+                <div id="drawer-snapshots-count" class="drawer-stat-val">0</div>
+                <div class="drawer-stat-lbl">Saved Map Snapshots</div>
+            </div>
+
+            <a href="offroute.html" class="drawer-btn" style="margin-top: auto; background-color: #8e24aa;">
+                <!-- Map Icon -->
+                <svg class="icon" viewBox="0 0 24 24" style="fill:white; width: 18px; height: 18px;">
+                    <path d="M20.5 3l-6 2.25L8.5 3 3.5 4.75v15.5l6-2.25 6 2.25 5-1.75V3zM15 17l-6-2.25V5.25l6 2.25V17z" />
+                </svg>
+                Offline Routes & Maps
+            </a>
+
+            <a href="backup.html" class="drawer-btn" style="margin-top: 10px;">
+                <!-- Sync/Backup Icon -->
+                <svg class="icon" viewBox="0 0 24 24" style="fill:white; width: 18px; height: 18px;">
+                    <path
+                        d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z" />
+                </svg>
+                NMap Backup & Sync
+            </a>
+        </div>
+    </div>
+
+    <main>
+        <!-- Map Container -->
+        <div id="map-container">
+            <!-- Distance Tracker Glassmorphic Info Card Overlay -->
+            <div id="distance-info-card" class="distance-info-card">
+                <div class="distance-info-title">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24" style="fill: var(--primary-color);">
+                        <path
+                            d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+                    </svg>
+                    <span>Nearby Places Proximity</span>
+                </div>
+                <div id="distance-info-content" class="distance-info-content">
+                    Add places to calculate distance.
+                </div>
+            </div>
+
+            <!-- Route Planning Overlays -->
+            <div id="route-banner" class="route-banner">Route Mode: Tap to set Start point</div>
+            <div id="draw-banner" class="route-banner"
+                style="pointer-events: auto; background: rgba(142, 36, 170, 0.95); color: white;">
+                <span id="draw-banner-text">Drawing custom path...</span>
+                <div style="display: flex; gap: 8px; margin-left: 8px;">
+                    <button onclick="saveCustomPath()"
+                        style="background: #34a853; color: white; border: none; padding: 6px 12px; border-radius: 15px; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Save</button>
+                    <button onclick="cancelCustomPath()"
+                        style="background: #ea4335; color: white; border: none; padding: 6px 12px; border-radius: 15px; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Cancel</button>
+                </div>
+            </div>
+            <div id="route-card" class="route-card">
+                <div class="route-info-row">
+                    <span class="route-title">Best Route</span>
+                    <div class="route-meta">
+                        <div class="route-meta-item">
+                            <!-- Distance Icon -->
+                            <svg class="icon icon-sm" viewBox="0 0 24 24" style="fill: var(--text-secondary);">
+                                <path
+                                    d="M10.47 2.05L2 10.5l8.47 8.45 1.41-1.41-6.06-6.04H22v-2H5.82l6.06-6.04-1.41-1.41z" />
+                            </svg>
+                            <span id="route-distance">- km</span>
+                        </div>
+                        <div class="route-meta-item">
+                            <!-- Time Icon (Access Time / Clock) -->
+                            <svg class="icon icon-sm" viewBox="0 0 24 24" style="fill: var(--text-secondary);">
+                                <path
+                                    d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
+                            </svg>
+                            <span id="route-duration">- mins</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="route-actions">
+                    <button class="btn-route-action btn-route-clear" onclick="clearRoute()">Clear Route</button>
+                    <button class="btn-route-action btn-route-capture" onclick="captureFromRouteCard()">Capture
+                        Map</button>
+                </div>
+            </div>
+            <div id="map"></div>
+        </div>
+
+        <!-- Gallery Section -->
+        <div id="gallery-section">
+            <div class="section-title">
+                <span>Saved Locations</span>
+                <span id="count-badge" style="font-weight:400; font-size:11px;">0 items</span>
+            </div>
+            <div id="gallery-grid">
+                <!-- Snapshots injected here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Floating Action Buttons -->
+    <div class="fab-container">
+        <!-- GPS Tracker Button -->
+        <button class="fab" id="gps-btn" aria-label="Locate Me">
+            <!-- SVG GPS Icon -->
+            <svg class="icon" viewBox="0 0 24 24">
+                <path
+                    d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+            </svg>
+        </button>
+        <!-- Capture Button (Only visible when map is open) -->
+        <button class="fab" id="capture-btn" aria-label="Capture Map">
+            <!-- SVG Camera Icon -->
+            <svg class="icon" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3.2" />
+                <path
+                    d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <span>Saving Offline Map...</span>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast">Notification</div>
+
+    <!-- Offline Viewer Modal (Redesigned) -->
+    <div id="viewer-modal">
+        <div id="viewer-header">
+            <span id="viewer-title">Map View</span>
+            <button class="viewer-btn" style="background:none; border:none; padding:0;" onclick="closeViewer()">
+                <!-- SVG Close Icon -->
+                <svg class="icon" style="width:28px; height:28px;" viewBox="0 0 24 24">
+                    <path
+                        d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
+            </button>
+        </div>
+
+        <div id="viewer-status">Waiting for GPS...</div>
+
+        <div id="viewer-content">
+            <div id="viewer-transform-layer">
+                <!-- Wrapper is crucial for accurate relative positioning -->
+                <div id="offline-map-wrapper">
+                    <img id="viewer-img" src="" alt="Offline Map">
+                    <!-- The user location dot overlaid on the image -->
+                    <div id="offline-user-marker"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="viewer-footer">
+            <button class="viewer-btn" onclick="prevImage()">
+                <!-- SVG Chevron Left -->
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                </svg>
+                Prev
+            </button>
+
+            <button class="viewer-btn" onclick="nextImage()">
+                Next
+                <!-- SVG Chevron Right -->
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Database Setup (Dexie.js) ---
+        const db = new Dexie("OfflineMapDB_v4");
+        db.version(3).stores({
+            snapshots: '++id, timestamp, name',
+            places: '++id, name, lat, lng',
+            areas: '++id, timestamp, name',
+            tiles: 'key, areaId',
+            routes: 'placeId'
+        });
+
+        // --- 2. Map Initialization ---
+        const map = L.map('map', {
+            preferCanvas: true,
+            zoomControl: false
+        }).setView([20.5937, 78.9629], 5);
+
+        L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            attribution: 'Google Maps',
+            crossOrigin: 'anonymous'
+        }).addTo(map);
+
+        let liveUserMarker = null;
+        let watchId = null;
+        let currentUserLocation = null; // { lat, lng }
+        let allSnapshots = []; // Cache for sorting
+        let currentViewerIndex = -1; // Index in sorted array
+        let onlineLastHeadingPosition = null;
+        let onlineCurrentHeading = null;
+        let vibrationNavigationActive = false;
+        let currentRouteSteps = [];
+        let vibratedTurns = [];
+        let lastRouteCalculationLocation = null;
+        let lastRouteCalculationTime = 0;
+
+        // Custom path drawing & tracking state variables
+        let tempDrawPoints = [];
+        let tempDrawPolyline = null;
+        let tempDrawMarkers = [];
+        let customPathDrawingActive = false;
+        let customPathPlaceId = null;
+        let activeCustomRoutePlaceId = null;
+
+        // Marker scaling disabled to keep round place icon constant size
+
+        // --- 3. UI Elements ---
+        const captureBtn = document.getElementById('capture-btn');
+        const gpsBtn = document.getElementById('gps-btn');
+        const galleryGrid = document.getElementById('gallery-grid');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const toast = document.getElementById('toast');
+        const countBadge = document.getElementById('count-badge');
+        const mapContainer = document.getElementById('map-container');
+        const toggleMapBtn = document.getElementById('toggle-map-btn');
+
+        // --- 3b. Route Planner State & Constants ---
+        let routeModeActive = false;
+        let routeStartPoint = null;
+        let routeEndPoint = null;
+        let routeStartMarker = null;
+        let routeEndMarker = null;
+        let routePolyline = null;
+        let routeDistanceLabel = null; // Label marker for route distance displayed on map
+
+        const startIcon = L.divIcon({
+            html: `
+                <div style="
+                    width: 24px;
+                    height: 24px;
+                    background: #34a853;
+                    border: 3px solid #ffffff;
+                    border-radius: 50%;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                ">
+                    <div style="width: 6px; height: 6px; background: white; border-radius: 50%;"></div>
+                </div>
+            `,
+            className: 'user-location-leaflet-marker',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
+
+        const endIcon = L.divIcon({
+            html: `
+                <div style="
+                    width: 24px;
+                    height: 24px;
+                    background: #ea4335;
+                    border: 3px solid #ffffff;
+                    border-radius: 50%;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                ">
+                    <div style="width: 6px; height: 6px; background: white; border-radius: 50%;"></div>
+                </div>
+            `,
+            className: 'user-location-leaflet-marker',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
+
+        // --- 3c. Add Place Planner State & Constants ---
+        let addPlaceModeActive = false;
+        let activePlaceMarkers = [];
+
+        const placeIcon = L.divIcon({
+            html: `
+                <div style="
+                    width: 8px;
+                    height: 8px;
+                    background: #8e24aa;
+                    border: 1.5px solid #ffffff;
+                    border-radius: 50%;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+                "></div>
+            `,
+            className: 'user-location-leaflet-marker',
+            iconSize: [8, 8],
+            iconAnchor: [4, 4]
+        });
+
+        // Track lines & labels for sequential place distances and proximity
+        let distancePolylines = [];
+        let distanceLabels = [];
+        let proximityLines = [];
+
+        // --- 4. Map Visibility Logic ---
+        window.toggleMap = function () {
+            const isVisible = mapContainer.classList.contains('visible');
+            const routeBtn = document.getElementById('route-mode-btn');
+            const addPlaceBtn = document.getElementById('add-place-btn');
+            const searchContainer = document.getElementById('search-container');
+            const searchToggleBtn = document.getElementById('search-toggle-btn');
+            const toggleMapBtn = document.getElementById('toggle-map-btn');
+            if (isVisible) {
+                mapContainer.classList.remove('visible');
+                toggleMapBtn.title = "Show Map";
+                captureBtn.style.display = 'none';
+                routeBtn.style.display = 'none';
+                addPlaceBtn.style.display = 'none';
+                searchToggleBtn.style.display = 'none';
+                document.getElementById('vibrate-toggle-btn').style.display = 'none';
+                if (vibrationNavigationActive) {
+                    window.toggleVibrationNavigation(); // Deactivate vibration if map is hidden
+                }
+                searchContainer.classList.remove('visible');
+                searchToggleBtn.style.backgroundColor = 'var(--text-secondary)';
+                if (routeModeActive) {
+                    window.toggleRouteMode(); // Turn off route mode if active
+                }
+                if (addPlaceModeActive) {
+                    window.toggleAddPlaceMode(); // Turn off add place mode if active
+                }
+            } else {
+                mapContainer.classList.add('visible');
+                toggleMapBtn.title = "Hide Map";
+                captureBtn.style.display = 'flex';
+                routeBtn.style.display = 'flex';
+                addPlaceBtn.style.display = 'flex';
+                searchToggleBtn.style.display = 'flex';
+                document.getElementById('vibrate-toggle-btn').style.display = 'flex';
+                // Do not automatically show search container; keep it toggled off initially
+                map.invalidateSize(); // Fix Leaflet rendering when unhidden
+                updateDistanceTracker(); // Draw distances when map is shown
+            }
+        };
+
+        window.toggleSearchBar = function () {
+            const container = document.getElementById('search-container');
+            const input = document.getElementById('search-input');
+            const btn = document.getElementById('search-toggle-btn');
+            if (!container) return;
+            const isSearchVisible = container.classList.contains('visible');
+            if (isSearchVisible) {
+                container.classList.remove('visible');
+                if (btn) btn.style.backgroundColor = 'var(--text-secondary)';
+            } else {
+                container.classList.add('visible');
+                if (btn) btn.style.backgroundColor = 'var(--primary-color)';
+                if (input) input.focus();
+            }
+        };
+
+        window.closeSearchBar = function () {
+            const container = document.getElementById('search-container');
+            const btn = document.getElementById('search-toggle-btn');
+            if (container && container.classList.contains('visible')) {
+                container.classList.remove('visible');
+                if (btn) btn.style.backgroundColor = 'var(--text-secondary)';
+            }
+        };
+
+        window.toggleDrawer = async function (show) {
+            const drawer = document.getElementById('drawer');
+            const overlay = document.getElementById('drawer-overlay');
+            if (!drawer || !overlay) return;
+            if (show) {
+                try {
+                    const placesCount = await db.places.count();
+                    const snapshotsCount = await db.snapshots.count();
+                    const placesCountEl = document.getElementById('drawer-places-count');
+                    const snapshotsCountEl = document.getElementById('drawer-snapshots-count');
+                    if (placesCountEl) placesCountEl.innerText = placesCount;
+                    if (snapshotsCountEl) snapshotsCountEl.innerText = snapshotsCount;
+                } catch (err) {
+                    console.error("Failed to load counts for drawer:", err);
+                }
+                drawer.classList.add('open');
+                overlay.classList.add('visible');
+            } else {
+                drawer.classList.remove('open');
+                overlay.classList.remove('visible');
+            }
+        };
+
+        // Unified Android Back Button Interceptor for Java WebView
+        window.handleAndroidBack = function () {
+            // 1. Close offline viewer if open
+            const viewerModal = document.getElementById('viewer-modal');
+            if (viewerModal && viewerModal.style.display === 'flex') {
+                window.closeViewer();
+                return true; // back event handled
+            }
+
+            // 2. Close side drawer if open
+            const drawer = document.getElementById('drawer');
+            if (drawer && drawer.classList.contains('open')) {
+                window.toggleDrawer(false);
+                return true; // back event handled
+            }
+
+            // 3. Close search bar if open
+            const searchContainer = document.getElementById('search-container');
+            if (searchContainer && searchContainer.classList.contains('visible')) {
+                window.closeSearchBar();
+                return true; // back event handled
+            }
+
+            return false; // not handled, Android can exit or go back in page history
+        };
+
+        // --- 4b. Route Planner Functions ---
+        window.toggleRouteMode = function () {
+            routeModeActive = !routeModeActive;
+
+            const btn = document.getElementById('route-mode-btn');
+            const banner = document.getElementById('route-banner');
+
+            if (routeModeActive) {
+                // Deactivate Add Place Mode if active
+                if (addPlaceModeActive) {
+                    window.toggleAddPlaceMode();
+                }
+                btn.style.backgroundColor = '#34a853';
+                banner.classList.add('visible');
+
+                clearRoute();
+
+                // Start GPS tracking automatically so we have live coordinates for routing
+                if (!watchId) {
+                    window.startGpsTracking();
+                }
+
+                // Route from live user location immediately if active
+                if (currentUserLocation) {
+                    routeStartPoint = L.latLng(currentUserLocation.lat, currentUserLocation.lng);
+                    // Do not add the green dot routeStartMarker at the live location to keep the arrow visible
+                    banner.innerText = "Route Mode: Tap to set Destination";
+                } else {
+                    banner.innerText = "Route Mode: Tap to set Start point";
+                }
+
+                map.on('click', onMapClickForRoute);
+            } else {
+                btn.style.backgroundColor = 'var(--text-secondary)';
+                banner.classList.remove('visible');
+                document.getElementById('route-card').classList.remove('visible');
+
+                clearRoute();
+                map.off('click', onMapClickForRoute);
+            }
+        };
+
+        window.toggleAddPlaceMode = function () {
+            addPlaceModeActive = !addPlaceModeActive;
+
+            const btn = document.getElementById('add-place-btn');
+            const banner = document.getElementById('route-banner');
+
+            if (addPlaceModeActive) {
+                // Deactivate Route Mode if active
+                if (routeModeActive) {
+                    window.toggleRouteMode();
+                }
+                btn.style.backgroundColor = '#8e24aa'; // Matching purple pin theme
+                banner.classList.add('visible');
+                banner.innerText = "Add Place Mode: Tap on map to pin a location";
+
+                map.on('click', onMapClickForAddPlace);
+            } else {
+                btn.style.backgroundColor = 'var(--text-secondary)';
+                banner.classList.remove('visible');
+                map.off('click', onMapClickForAddPlace);
+            }
+        };
+
+        async function onMapClickForAddPlace(e) {
+            const latlng = e.latlng.wrap();
+            const name = prompt("Enter a name for this custom place:");
+            if (!name || name.trim() === "") return;
+
+            try {
+                const id = await db.places.add({
+                    name: name.trim(),
+                    lat: latlng.lat,
+                    lng: latlng.lng
+                });
+
+                showToast(`Saved place "${name.trim()}"`);
+
+                createPlaceMarker({
+                    id: id,
+                    name: name.trim(),
+                    lat: latlng.lat,
+                    lng: latlng.lng
+                });
+                updateDistanceTracker();
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to save place");
+            }
+        }
+
+        function createPlaceMarker(place) {
+            const marker = L.marker([place.lat, place.lng], { icon: placeIcon }).addTo(map);
+
+            // Popup with edit name and delete place capabilities
+            marker.bindPopup(`
+                <div style="font-family: inherit; padding: 4px; text-align: center; min-width: 120px;">
+                    <strong id="popup-name-${place.id}" style="font-size: 13px; color: var(--text-primary); display:block; margin-bottom: 8px;">${place.name}</strong>
+                    <div style="display: flex; gap: 6px; justify-content: center;">
+                        <button onclick="editPlaceName(${place.id})" style="background: #1a73e8; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: 600; font-family: inherit;">Edit</button>
+                        <button onclick="deletePlace(${place.id})" style="background: #ea4335; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: 600; font-family: inherit;">Delete</button>
+                    </div>
+                </div>
+            `);
+
+            // If in Route Mode, intercept click to set route endpoints instead of opening popup
+            marker.on('click', (e) => {
+                if (routeModeActive) {
+                    L.DomEvent.stopPropagation(e);
+                    setTimeout(() => { map.closePopup(); }, 10);
+                    handleRoutePointSelection(e.latlng.wrap());
+                }
+            });
+
+            marker.placeData = place;
+            activePlaceMarkers.push(marker);
+        }
+
+        // Global functions for editing and deleting places from marker popups
+        window.editPlaceName = async function (id) {
+            try {
+                const place = await db.places.get(id);
+                if (!place) return;
+
+                const newName = prompt("Edit name for this place:", place.name);
+                if (newName !== null && newName.trim() !== "") {
+                    await db.places.update(id, { name: newName.trim() });
+                    showToast("Place name updated!");
+                    map.closePopup();
+                    await loadPlaces(); // Re-render place markers
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to edit place name");
+            }
+        };
+
+        window.deletePlace = async function (id) {
+            try {
+                const place = await db.places.get(id);
+                if (!place) return;
+
+                if (confirm(`Delete place "${place.name}"?`)) {
+                    await db.places.delete(id);
+                    showToast(`Deleted "${place.name}"`);
+                    map.closePopup();
+
+                    const marker = activePlaceMarkers.find(m => m.placeData && m.placeData.id === id);
+                    if (marker) {
+                        map.removeLayer(marker);
+                        activePlaceMarkers = activePlaceMarkers.filter(m => m !== marker);
+                    }
+
+                    document.getElementById('search-results').classList.remove('visible');
+                    updateDistanceTracker();
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to delete place");
+            }
+        };
+
+        async function loadPlaces() {
+            activePlaceMarkers.forEach(m => map.removeLayer(m));
+            activePlaceMarkers = [];
+
+            try {
+                const places = await db.places.toArray();
+                places.forEach(place => {
+                    createPlaceMarker(place);
+                });
+                updateDistanceTracker();
+            } catch (err) {
+                console.error("Failed to load saved places:", err);
+            }
+        }
+
+        // Distance Tracker cleanup - Distance calculations are now restricted to routing scenarios
+        async function updateDistanceTracker() {
+            // Clear previous lines/labels
+            distancePolylines.forEach(l => map.removeLayer(l));
+            distancePolylines = [];
+            distanceLabels.forEach(m => map.removeLayer(m));
+            distanceLabels = [];
+            proximityLines.forEach(l => map.removeLayer(l));
+            proximityLines = [];
+
+            const card = document.getElementById('distance-info-card');
+            if (card) {
+                card.classList.remove('visible');
+            }
+        }
+
+        function showAllTooltips() {
+            activePlaceMarkers.forEach(marker => {
+                marker.bindTooltip(marker.placeData.name, {
+                    permanent: true,
+                    direction: 'top',
+                    className: 'custom-place-tooltip'
+                }).openTooltip();
+            });
+        }
+
+        function hideAllTooltips() {
+            activePlaceMarkers.forEach(marker => {
+                marker.unbindTooltip();
+            });
+        }
+
+        window.onSearchInput = async function () {
+            const query = document.getElementById('search-input').value.toLowerCase().trim();
+            const resultsContainer = document.getElementById('search-results');
+
+            if (query === "") {
+                resultsContainer.innerHTML = "";
+                resultsContainer.classList.remove('visible');
+                hideAllTooltips();
+                return;
+            }
+
+            if (query === "all") {
+                resultsContainer.innerHTML = "";
+                resultsContainer.classList.remove('visible');
+                showAllTooltips();
+                return;
+            } else {
+                hideAllTooltips();
+            }
+
+            try {
+                const matches = await db.places.filter(p => p.name.toLowerCase().includes(query)).toArray();
+
+                if (matches.length === 0) {
+                    resultsContainer.innerHTML = '<div style="padding:10px; font-size:12px; color:#999; text-align:center;">No places found</div>';
+                    resultsContainer.classList.add('visible');
+                    return;
+                }
+
+                resultsContainer.innerHTML = "";
+                matches.forEach(place => {
+                    const item = document.createElement('div');
+                    item.className = 'search-result-item';
+
+                    // Create Name text span
+                    const textSpan = document.createElement('span');
+                    textSpan.className = 'place-name-text';
+                    textSpan.innerText = place.name;
+
+                    // Create Button Container to hold Route, Draw, Track
+                    const btnContainer = document.createElement('div');
+                    btnContainer.style.display = 'flex';
+                    btnContainer.style.gap = '4px';
+                    btnContainer.onclick = (e) => e.stopPropagation();
+
+                    // Create Route Action button
+                    const routeBtn = document.createElement('button');
+                    routeBtn.className = 'btn-search-route';
+                    routeBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" style="width:12px; height:12px; fill:currentColor;"><path d="M22.41 12.3l-9-9c-.39-.39-1.02-.39-1.41 0l-9 9c-.39.39-.39 1.02 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9c.39-.39.39-1.02 0-1.41zM14 18.5V15h-4v-3h4V8.5L18.5 12 14 18.5z"/></svg>
+                        Route
+                    `;
+                    routeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        window.calculateRouteToPlace(place.id, e);
+                    };
+
+                    // Create Draw button
+                    const drawBtn = document.createElement('button');
+                    drawBtn.className = 'btn-search-route';
+                    drawBtn.style.backgroundColor = '#8e24aa';
+                    drawBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" style="width:12px; height:12px; fill:currentColor;"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                        Draw
+                    `;
+                    drawBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        window.startCustomPathDrawing(place.id, e);
+                    };
+
+                    // Create Track button
+                    const trackBtn = document.createElement('button');
+                    trackBtn.className = 'btn-search-route';
+                    trackBtn.style.backgroundColor = '#e27200';
+                    trackBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" style="width:12px; height:12px; fill:currentColor;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.83 0-.38.03-.75.09-1.12L9 14v1c0 1.1.9 2 2 2v2.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                        Track
+                    `;
+                    trackBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        window.trackCustomRoute(place.id, e);
+                    };
+
+                    btnContainer.appendChild(routeBtn);
+                    btnContainer.appendChild(drawBtn);
+                    btnContainer.appendChild(trackBtn);
+
+                    // Set item click to zoom
+                    item.onclick = () => {
+                        const marker = activePlaceMarkers.find(m => m.placeData && m.placeData.id === place.id);
+                        if (marker) {
+                            map.setView([place.lat, place.lng], 16);
+                            marker.openPopup();
+                        }
+                        document.getElementById('search-input').value = "";
+                        resultsContainer.classList.remove('visible');
+                    };
+
+                    item.appendChild(textSpan);
+                    item.appendChild(btnContainer);
+                    resultsContainer.appendChild(item);
+                });
+                resultsContainer.classList.add('visible');
+            } catch (err) {
+                console.error(err);
+            }
+        };
+
+        window.calculateRouteToPlace = async function (placeId, event) {
+            if (event) {
+                event.stopPropagation();
+            }
+
+            // Ensure GPS tracking is running to get continuous live location updates
+            if (!watchId) {
+                window.startGpsTracking();
+            }
+
+            if (!currentUserLocation) {
+                showToast("Locating your position...");
+                let attempts = 0;
+                const checkLocationInterval = setInterval(async () => {
+                    attempts++;
+                    if (currentUserLocation) {
+                        clearInterval(checkLocationInterval);
+                        await performRouteToPlace(placeId);
+                    } else if (attempts >= 10) { // 5 seconds timeout
+                        clearInterval(checkLocationInterval);
+                        showToast("GPS timeout. Please check device location settings.");
+                    }
+                }, 500);
+                return;
+            }
+
+            await performRouteToPlace(placeId);
+        };
+
+        async function performRouteToPlace(placeId) {
+            try {
+                const place = await db.places.get(placeId);
+                if (!place) {
+                    showToast("Place not found");
+                    return;
+                }
+
+                // Hide search results
+                document.getElementById('search-results').classList.remove('visible');
+                document.getElementById('search-input').value = "";
+
+                // Activate Route Planner
+                if (!routeModeActive) {
+                    window.toggleRouteMode();
+                }
+
+                // Draw route points
+                clearRoute();
+                routeStartPoint = L.latLng(currentUserLocation.lat, currentUserLocation.lng);
+                // Do not add the green dot routeStartMarker at the live location to keep the arrow visible
+
+                routeEndPoint = L.latLng(place.lat, place.lng);
+                routeEndMarker = L.marker(routeEndPoint, { icon: endIcon }).addTo(map);
+
+                calculateAndShowRoute();
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to generate route");
+            }
+        }
+
+        document.addEventListener('click', (e) => {
+            const container = document.getElementById('search-container');
+            const results = document.getElementById('search-results');
+            if (container && !container.contains(e.target) && results) {
+                results.classList.remove('visible');
+            }
+        });
+
+        function handleRoutePointSelection(latlng) {
+            if (!routeStartPoint) {
+                routeStartPoint = latlng;
+                routeStartMarker = L.marker(latlng, { icon: startIcon }).addTo(map);
+
+                const banner = document.getElementById('route-banner');
+                banner.innerText = "Route Mode: Tap to set Destination";
+            } else if (!routeEndPoint) {
+                routeEndPoint = latlng;
+                routeEndMarker = L.marker(latlng, { icon: endIcon }).addTo(map);
+
+                calculateAndShowRoute();
+            } else {
+                // Shift route endpoints: previous destination becomes new start point
+                routeStartPoint = routeEndPoint;
+                if (routeStartMarker) {
+                    routeStartMarker.setLatLng(routeStartPoint);
+                } else {
+                    routeStartMarker = L.marker(routeStartPoint, { icon: startIcon }).addTo(map);
+                }
+
+                routeEndPoint = latlng;
+                if (routeEndMarker) {
+                    routeEndMarker.setLatLng(routeEndPoint);
+                } else {
+                    routeEndMarker = L.marker(routeEndPoint, { icon: endIcon }).addTo(map);
+                }
+
+                calculateAndShowRoute();
+            }
+        }
+
+        function onMapClickForRoute(e) {
+            handleRoutePointSelection(e.latlng.wrap());
+        }
+
+        async function calculateAndShowRoute(fitBounds = true) {
+            const banner = document.getElementById('route-banner');
+            if (fitBounds) {
+                banner.innerText = "Calculating best route...";
+            }
+
+            const startPoint = routeStartPoint.wrap();
+            const endPoint = routeEndPoint.wrap();
+            const startLng = startPoint.lng;
+            const startLat = startPoint.lat;
+            const endLng = endPoint.lng;
+            const endLat = endPoint.lat;
+
+            // Try different routing profiles to maximize chances of snapping to roads/paths
+            const profiles = ['driving', 'foot', 'bicycle'];
+            let routeData = null;
+            let usedProfile = '';
+
+            for (const profile of profiles) {
+                const url = `https://router.project-osrm.org/route/v1/${profile}/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson&steps=true`;
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) continue;
+
+                    const data = await response.json();
+                    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                        routeData = data.routes[0];
+                        usedProfile = profile;
+                        break;
+                    }
+                } catch (e) {
+                    console.warn(`OSRM profile ${profile} fetch failed:`, e);
+                }
+            }
+
+            // Remove existing route distance label
+            if (routeDistanceLabel) {
+                map.removeLayer(routeDistanceLabel);
+                routeDistanceLabel = null;
+            }
+
+            if (routeData) {
+                currentRouteSteps = routeData.legs && routeData.legs[0] ? routeData.legs[0].steps : [];
+                if (fitBounds) {
+                    vibratedTurns = [];
+                }
+
+                const coordinates = routeData.geometry.coordinates;
+                const latlngs = coordinates.map(coord => [coord[1], coord[0]]);
+
+                if (routePolyline) map.removeLayer(routePolyline);
+                routePolyline = L.polyline(latlngs, {
+                    color: '#1a73e8',
+                    weight: 6,
+                    opacity: 0.8,
+                    lineJoin: 'round'
+                }).addTo(map);
+
+                if (fitBounds) {
+                    map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+                }
+
+                const distanceKm = routeData.distance / 1000;
+                const durationMins = Math.round(routeData.duration / 60);
+
+                document.getElementById('route-distance').innerText = `${distanceKm.toFixed(1)} km`;
+                document.getElementById('route-duration').innerText = `${durationMins} mins`;
+
+                // Draw distance badge on the route line midpoint
+                const midIndex = Math.floor(latlngs.length / 2);
+                const midLatLng = latlngs[midIndex];
+                routeDistanceLabel = L.marker(midLatLng, {
+                    icon: L.divIcon({
+                        html: `<div style="background: white; border: 2px solid #1a73e8; color: #1a73e8; border-radius: 12px; padding: 3px 10px; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3); text-align: center;">Distance: ${distanceKm.toFixed(1)} km</div>`,
+                        className: 'user-location-leaflet-marker',
+                        iconSize: [120, 24],
+                        iconAnchor: [60, 12]
+                    })
+                }).addTo(map);
+
+                let title = "Best Route";
+                if (usedProfile === 'foot') title = "Walking Route";
+                else if (usedProfile === 'bicycle') title = "Cycling Route";
+
+                document.getElementById('route-title').innerText = title;
+                document.getElementById('route-card').classList.add('visible');
+
+                banner.innerText = "Route calculated! Tap map/marker to set next destination.";
+            } else {
+                console.warn("All OSRM routing profiles failed, falling back to direct line");
+
+                // Fallback to straight line direct path
+                const latlngs = [startPoint, endPoint];
+
+                if (routePolyline) map.removeLayer(routePolyline);
+                routePolyline = L.polyline(latlngs, {
+                    color: '#e27200', // Premium orange color for direct connection
+                    weight: 5,
+                    opacity: 0.8,
+                    dashArray: '5, 8', // Dashed line
+                    lineJoin: 'round'
+                }).addTo(map);
+
+                if (fitBounds) {
+                    map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+                }
+
+                const distanceKm = getDistance(
+                    startPoint.lat, startPoint.lng,
+                    endPoint.lat, endPoint.lng
+                );
+
+                const durationMins = Math.max(1, Math.round((distanceKm / 50) * 60));
+
+                document.getElementById('route-distance').innerText = `${distanceKm.toFixed(1)} km`;
+                document.getElementById('route-duration').innerText = `${durationMins} mins`;
+
+                // Draw distance badge on direct connection midpoint
+                const midLat = (startPoint.lat + endPoint.lat) / 2;
+                const midLng = (startPoint.lng + endPoint.lng) / 2;
+                routeDistanceLabel = L.marker([midLat, midLng], {
+                    icon: L.divIcon({
+                        html: `<div style="background: white; border: 2px solid #e27200; color: #e27200; border-radius: 12px; padding: 3px 10px; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3); text-align: center;">Distance: ${distanceKm.toFixed(1)} km</div>`,
+                        className: 'user-location-leaflet-marker',
+                        iconSize: [120, 24],
+                        iconAnchor: [60, 12]
+                    })
+                }).addTo(map);
+
+                document.getElementById('route-title').innerText = "Direct Path (No routing data)";
+                document.getElementById('route-card').classList.add('visible');
+
+                currentRouteSteps = [];
+                if (fitBounds) {
+                    vibratedTurns = [];
+                }
+                banner.innerText = "Direct path drawn! Tap map/marker to set next destination.";
+            }
+        }
+
+        window.clearRoute = function () {
+            routeStartPoint = null;
+            routeEndPoint = null;
+            currentRouteSteps = [];
+            vibratedTurns = [];
+            activeCustomRoutePlaceId = null; // Clear custom route tracking
+            if (routeStartMarker) {
+                map.removeLayer(routeStartMarker);
+                routeStartMarker = null;
+            }
+            if (routeEndMarker) {
+                map.removeLayer(routeEndMarker);
+                routeEndMarker = null;
+            }
+            if (routePolyline) {
+                map.removeLayer(routePolyline);
+                routePolyline = null;
+            }
+            if (routeDistanceLabel) {
+                map.removeLayer(routeDistanceLabel);
+                routeDistanceLabel = null;
+            }
+            const banner = document.getElementById('route-banner');
+            if (banner && routeModeActive) {
+                if (currentUserLocation) {
+                    routeStartPoint = L.latLng(currentUserLocation.lat, currentUserLocation.lng);
+                    // Do not add the green dot routeStartMarker at the live location to keep the arrow visible
+                    banner.innerText = "Route Mode: Tap to set Destination";
+                } else {
+                    banner.innerText = "Route Mode: Tap to set Start point";
+                }
+            }
+            const routeCard = document.getElementById('route-card');
+            if (routeCard) {
+                routeCard.classList.remove('visible');
+            }
+        };
+
+        // --- Custom Path Drawing Functions ---
+        window.startCustomPathDrawing = async function (placeId, event) {
+            if (event) event.stopPropagation();
+
+            // Close search results and search bar
+            document.getElementById('search-results').classList.remove('visible');
+            document.getElementById('search-input').value = "";
+            window.closeSearchBar();
+
+            // Deactivate any active route/add place modes
+            if (routeModeActive) window.toggleRouteMode();
+            if (addPlaceModeActive) window.toggleAddPlaceMode();
+
+            try {
+                const place = await db.places.get(placeId);
+                if (!place) return;
+
+                customPathPlaceId = placeId;
+                customPathDrawingActive = true;
+                tempDrawPoints = [];
+                tempDrawMarkers = [];
+
+                // Clear map of existing temp elements if any
+                if (tempDrawPolyline) map.removeLayer(tempDrawPolyline);
+                tempDrawPolyline = L.polyline([], {
+                    color: '#8e24aa',
+                    weight: 5,
+                    dashArray: '5, 8',
+                    opacity: 0.8
+                }).addTo(map);
+
+                // Set start point to user location if available
+                if (currentUserLocation) {
+                    const userLatLng = L.latLng(currentUserLocation.lat, currentUserLocation.lng);
+                    tempDrawPoints.push(userLatLng);
+                    tempDrawPolyline.setLatLngs(tempDrawPoints);
+
+                    const startMarker = L.circleMarker(userLatLng, {
+                        radius: 5,
+                        color: '#8e24aa',
+                        fillColor: '#ffffff',
+                        fillOpacity: 1,
+                        weight: 2
+                    }).addTo(map);
+                    tempDrawMarkers.push(startMarker);
+                }
+
+                // Show banner
+                const banner = document.getElementById('draw-banner');
+                document.getElementById('draw-banner-text').innerText = `Draw path for ${place.name}: Tap map to draw.`;
+                banner.classList.add('visible');
+
+                // Bind map click handler for custom path drawing
+                map.on('click', onMapClickForCustomDraw);
+                showToast("Draw Mode Active: Tap map to add path coordinates.");
+            } catch (err) {
+                console.error(err);
+            }
+        };
+
+        function onMapClickForCustomDraw(e) {
+            const latlng = e.latlng.wrap();
+            tempDrawPoints.push(latlng);
+            tempDrawPolyline.setLatLngs(tempDrawPoints);
+
+            const marker = L.circleMarker(latlng, {
+                radius: 5,
+                color: '#8e24aa',
+                fillColor: '#ffffff',
+                fillOpacity: 1,
+                weight: 2
+            }).addTo(map);
+            tempDrawMarkers.push(marker);
+        }
+
+        window.saveCustomPath = async function () {
+            if (!customPathDrawingActive) return;
+
+            if (tempDrawPoints.length < 2) {
+                showToast("Please tap on the map to draw a path first!");
+                return;
+            }
+
+            try {
+                // Convert L.LatLng array to array of [lat, lng] to store in DB
+                const pointsToSave = tempDrawPoints.map(p => [p.lat, p.lng]);
+
+                await db.places.update(customPathPlaceId, {
+                    customRoutePoints: pointsToSave
+                });
+
+                showToast("Custom route saved successfully!");
+                cleanupCustomDraw();
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to save custom route.");
+            }
+        };
+
+        window.cancelCustomPath = function () {
+            cleanupCustomDraw();
+            showToast("Drawing cancelled.");
+        };
+
+        function cleanupCustomDraw() {
+            customPathDrawingActive = false;
+            customPathPlaceId = null;
+
+            map.off('click', onMapClickForCustomDraw);
+
+            if (tempDrawPolyline) {
+                map.removeLayer(tempDrawPolyline);
+                tempDrawPolyline = null;
+            }
+
+            tempDrawMarkers.forEach(m => map.removeLayer(m));
+            tempDrawMarkers = [];
+            tempDrawPoints = [];
+
+            const banner = document.getElementById('draw-banner');
+            if (banner) banner.classList.remove('visible');
+        }
+
+        // --- Custom Path Tracking Functions ---
+        window.trackCustomRoute = async function (placeId, event) {
+            if (event) event.stopPropagation();
+
+            // Close search results and search bar
+            document.getElementById('search-results').classList.remove('visible');
+            document.getElementById('search-input').value = "";
+            window.closeSearchBar();
+
+            try {
+                const place = await db.places.get(placeId);
+                if (!place || !place.customRoutePoints || place.customRoutePoints.length === 0) {
+                    showToast("No custom route drawn for this place. Click Draw first!");
+                    return;
+                }
+
+                // Clear any existing route
+                clearRoute();
+                activeCustomRoutePlaceId = placeId;
+
+                // Construct path coordinates starting from user location if available
+                let latlngs = [];
+                if (currentUserLocation) {
+                    latlngs.push([currentUserLocation.lat, currentUserLocation.lng]);
+                }
+
+                // Append custom route points
+                place.customRoutePoints.forEach(p => {
+                    latlngs.push([p[0], p[1]]);
+                });
+
+                // Draw route line
+                if (routePolyline) map.removeLayer(routePolyline);
+                routePolyline = L.polyline(latlngs, {
+                    color: '#8e24aa', // Purple color for custom routes
+                    weight: 6,
+                    opacity: 0.8,
+                    lineJoin: 'round'
+                }).addTo(map);
+
+                // Double click on custom route polyline to delete it
+                routePolyline.on('dblclick', (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    if (activeCustomRoutePlaceId) {
+                        if (confirm("Do you want to delete this custom route?")) {
+                            deleteCustomRoute(activeCustomRoutePlaceId);
+                        }
+                    }
+                });
+
+                // Add end marker
+                routeEndPoint = L.latLng(place.lat, place.lng);
+                routeEndMarker = L.marker(routeEndPoint, { icon: endIcon }).addTo(map);
+
+                // Zoom map to show the custom route
+                map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+
+                // Calculate steps for vibration turn alerts
+                currentRouteSteps = [];
+                vibratedTurns = [];
+
+                for (let i = 1; i < latlngs.length - 1; i++) {
+                    const pPrev = latlngs[i - 1];
+                    const pCurr = latlngs[i];
+                    const pNext = latlngs[i + 1];
+
+                    const bearing1 = calculateBearing(pPrev[0], pPrev[1], pCurr[0], pCurr[1]);
+                    const bearing2 = calculateBearing(pCurr[0], pCurr[1], pNext[0], pNext[1]);
+
+                    let diff = bearing2 - bearing1;
+                    if (diff > 180) diff -= 360;
+                    if (diff < -180) diff += 360;
+
+                    // If bearing change is more than 20 degrees, register as a turn
+                    if (Math.abs(diff) >= 20) {
+                        const isLeft = diff < 0;
+                        currentRouteSteps.push({
+                            maneuver: {
+                                location: [pCurr[1], pCurr[0]], // OSRM expects [lng, lat]
+                                modifier: isLeft ? 'left' : 'right'
+                            }
+                        });
+                    }
+                }
+
+                // Calculate distance
+                let totalDistKm = 0;
+                for (let i = 1; i < latlngs.length; i++) {
+                    totalDistKm += getDistance(latlngs[i - 1][0], latlngs[i - 1][1], latlngs[i][0], latlngs[i][1]);
+                }
+                const durationMins = Math.max(1, Math.round((totalDistKm / 5) * 60)); // Walking duration estimate (5 km/h)
+
+                document.getElementById('route-distance').innerText = `${totalDistKm.toFixed(2)} km`;
+                document.getElementById('route-duration').innerText = `${durationMins} mins`;
+                document.getElementById('route-title').innerText = `Custom Route: ${place.name}`;
+
+                // Display route card
+                document.getElementById('route-card').classList.add('visible');
+
+                // Set route banner text
+                const banner = document.getElementById('route-banner');
+                if (banner) {
+                    banner.innerText = `Tracking Custom Route for ${place.name}`;
+                    banner.classList.add('visible');
+                }
+
+                showToast(`Tracking custom route to ${place.name}`);
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to load custom route.");
+            }
+        };
+
+        window.deleteCustomRoute = async function (placeId) {
+            try {
+                const place = await db.places.get(placeId);
+                if (!place) return;
+
+                await db.places.update(placeId, {
+                    customRoutePoints: []
+                });
+
+                showToast(`Deleted custom route for ${place.name}`);
+
+                // Clear the route from the map
+                clearRoute();
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to delete custom route.");
+            }
+        };
+
+        async function updateCustomRouteTrackingConnection(lat, lng) {
+            if (!activeCustomRoutePlaceId) return;
+            try {
+                const place = await db.places.get(activeCustomRoutePlaceId);
+                if (!place || !place.customRoutePoints || place.customRoutePoints.length === 0) return;
+
+                let latlngs = [[lat, lng]];
+                place.customRoutePoints.forEach(p => {
+                    latlngs.push([p[0], p[1]]);
+                });
+
+                if (routePolyline) {
+                    routePolyline.setLatLngs(latlngs);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        window.captureFromRouteCard = function () {
+            document.getElementById('capture-btn').click();
+        };
+
+        // --- 5. GPS / Live Tracking Logic ---
+        window.startGpsTracking = function () {
+            if (watchId) return; // Already tracking
+            showToast("Locating...");
+            gpsBtn.classList.add('active');
+            onlineLastHeadingPosition = null;
+            onlineCurrentHeading = null;
+
+            watchId = navigator.geolocation.watchPosition((pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                currentUserLocation = { lat, lng };
+
+                // Determine heading/direction
+                let heading = null;
+                if (pos.coords.heading !== null && pos.coords.heading !== undefined && !isNaN(pos.coords.heading)) {
+                    heading = pos.coords.heading;
+                    onlineCurrentHeading = heading;
+                } else {
+                    // Calculate bearing from previous location if we have moved enough
+                    if (!onlineLastHeadingPosition) {
+                        onlineLastHeadingPosition = { lat, lng };
+                    } else {
+                        const dist = getDistance(onlineLastHeadingPosition.lat, onlineLastHeadingPosition.lng, lat, lng);
+                        if (dist > 0.004) { // > 4 meters
+                            heading = calculateBearing(onlineLastHeadingPosition.lat, onlineLastHeadingPosition.lng, lat, lng);
+                            onlineCurrentHeading = heading;
+                            onlineLastHeadingPosition = { lat, lng };
+                        } else {
+                            heading = onlineCurrentHeading;
+                        }
+                    }
+                }
+
+                // Update Live Map Marker
+                if (!liveUserMarker) {
+                    liveUserMarker = L.marker([lat, lng], {
+                        icon: createUserMarkerIcon(heading)
+                    }).addTo(map);
+                    map.setView([lat, lng], 16);
+                } else {
+                    liveUserMarker.setLatLng([lat, lng]);
+                    liveUserMarker.setIcon(createUserMarkerIcon(heading));
+                }
+
+                // Re-sort and re-render gallery based on new location
+                renderGallery();
+                updateDistanceTracker(); // Update proximity drawings on GPS updates
+
+                if (activeCustomRoutePlaceId) {
+                    updateCustomRouteTrackingConnection(lat, lng);
+                }
+
+                // --- Live Routing Recalculation ---
+                if (routeModeActive && routeEndPoint) {
+                    routeStartPoint = L.latLng(lat, lng);
+                    const now = Date.now();
+                    let shouldRecalc = false;
+
+                    if (!lastRouteCalculationLocation) {
+                        shouldRecalc = true;
+                    } else {
+                        const distMoved = getDistance(lastRouteCalculationLocation.lat, lastRouteCalculationLocation.lng, lat, lng);
+                        const timeElapsed = now - lastRouteCalculationTime;
+                        // Trigger recalculation if user moved > 10 meters and at least 3 seconds elapsed
+                        if (distMoved > 0.01 && timeElapsed > 3000) {
+                            shouldRecalc = true;
+                        }
+                    }
+
+                    if (shouldRecalc) {
+                        lastRouteCalculationLocation = { lat, lng };
+                        lastRouteCalculationTime = now;
+                        calculateAndShowRoute(false); // false means update path without zooming/fitting bounds
+                    }
+                }
+
+                // Check turn proximity for vibration alerts
+                checkRouteTurnProximity(lat, lng);
+
+            }, (err) => {
+                console.error(err);
+                showToast("GPS Error: " + err.message);
+                gpsBtn.classList.remove('active');
+                watchId = null;
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+                timeout: 10000
+            });
+        };
+
+        window.stopGpsTracking = function () {
+            if (!watchId) return;
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+            gpsBtn.classList.remove('active');
+            if (liveUserMarker) {
+                map.removeLayer(liveUserMarker);
+                liveUserMarker = null;
+            }
+            showToast("GPS Tracking Stopped");
+            currentUserLocation = null;
+            onlineLastHeadingPosition = null;
+            onlineCurrentHeading = null;
+            renderGallery(); // Re-render to remove distance sorting
+            updateDistanceTracker(); // Clear proximity drawings
+        };
+
+        gpsBtn.addEventListener('click', () => {
+            if (watchId) {
+                window.stopGpsTracking();
+            } else {
+                window.startGpsTracking();
+            }
+        });
+
+        // --- 6. Capture Logic with Naming ---
+        captureBtn.addEventListener('click', async () => {
+            // Prompt for name first
+            const name = prompt("Enter a name for this location:", "My Location");
+            if (name === null) return; // User cancelled
+
+            loadingOverlay.style.display = 'flex';
+            await new Promise(r => setTimeout(r, 200));
+
+            const mapElement = document.getElementById('map');
+            const bounds = map.getBounds();
+            const north = bounds.getNorth();
+            const south = bounds.getSouth();
+            const east = bounds.getEast();
+            const west = bounds.getWest();
+
+            html2canvas(mapElement, {
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+                ignoreElements: (el) => el.classList.contains('leaflet-control-container')
+            }).then(canvas => {
+                const imgData = canvas.toDataURL('image/jpeg', 0.8);
+                const center = map.getCenter();
+                const zoom = map.getZoom();
+                const timestamp = new Date();
+
+                db.snapshots.add({
+                    name: name || "Untitled",
+                    imageData: imgData,
+                    timestamp: timestamp,
+                    center: { lat: center.lat, lng: center.lng },
+                    zoom: zoom,
+                    bounds: { north, south, east, west }
+                }).then(() => {
+                    loadingOverlay.style.display = 'none';
+                    showToast("Map Saved Offline!");
+                    loadSnapshots(); // Reload list
+                }).catch(err => {
+                    console.error(err);
+                    loadingOverlay.style.display = 'none';
+                    showToast("Storage Error");
+                });
+            }).catch(err => {
+                console.error(err);
+                loadingOverlay.style.display = 'none';
+                showToast("Capture Failed");
+            });
+        });
+
+        // --- 7. Gallery & Sorting Logic ---
+
+        // Helper: Haversine Distance in km
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Helper: Calculate bearing in degrees between two coordinates
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const lat1Rad = lat1 * Math.PI / 180;
+            const lat2Rad = lat2 * Math.PI / 180;
+
+            const y = Math.sin(dLon) * Math.cos(lat2Rad);
+            const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+                Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+
+            let brng = Math.atan2(y, x) * 180 / Math.PI;
+            return (brng + 360) % 360;
+        }
+
+        // Helper: Generate inner HTML for unified location marker icon
+        function createMarkerIconHtml(heading) {
+            const angle = (heading !== null && heading !== undefined) ? heading : 0;
+            return `
+                <div class="user-location-marker-wrapper">
+                    <div class="user-location-pulse"></div>
+                    <div class="user-location-arrow-container" style="transform: rotate(${angle}deg);">
+                        <svg viewBox="0 0 24 24" style="width: 24px; height: 24px; display: block;">
+                            <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z" fill="#1a73e8" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Helper: Create Leaflet DivIcon with heading support
+        function createUserMarkerIcon(heading) {
+            return L.divIcon({
+                html: createMarkerIconHtml(heading),
+                className: 'user-location-leaflet-marker',
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+            });
+        }
+
+        async function loadSnapshots() {
+            allSnapshots = await db.snapshots.toArray();
+            renderGallery();
+        }
+
+        function renderGallery() {
+            countBadge.innerText = `${allSnapshots.length} items`;
+
+            if (allSnapshots.length === 0) {
+                galleryGrid.innerHTML = '<div style="text-align:center; color:#999; padding:20px;">No saved maps.</div>';
+                return;
+            }
+
+            // Sorting Logic
+            let displayList = [...allSnapshots];
+
+            if (currentUserLocation) {
+                // Determine if user is currently inside each map's bounds, and calculate distance to center
+                displayList.forEach(snap => {
+                    const b = snap.bounds;
+                    snap.isLiveInside = (currentUserLocation.lat <= b.north && currentUserLocation.lat >= b.south &&
+                        currentUserLocation.lng >= b.west && currentUserLocation.lng <= b.east);
+                    snap.distance = getDistance(
+                        currentUserLocation.lat, currentUserLocation.lng,
+                        snap.center.lat, snap.center.lng
+                    );
+                });
+
+                // Sort: Snapshots containing the live location come first, then sorted by distance to center
+                displayList.sort((a, b) => {
+                    if (a.isLiveInside && !b.isLiveInside) return -1;
+                    if (!a.isLiveInside && b.isLiveInside) return 1;
+                    return a.distance - b.distance;
+                });
+            } else {
+                // Default sort: Newest first
+                displayList.sort((a, b) => b.timestamp - a.timestamp);
+            }
+
+            // Update global sorted reference for Next/Prev logic
+            allSnapshots = displayList;
+
+            galleryGrid.innerHTML = '';
+            displayList.forEach((snap, index) => {
+                const card = document.createElement('div');
+                card.className = 'snapshot-card';
+
+                const date = snap.timestamp.toLocaleDateString();
+                const distStr = snap.distance !== undefined
+                    ? `<div class="distance-badge">${snap.distance.toFixed(2)} km away</div>`
+                    : '';
+
+                // Live status text right below coordinates if user is within bounds
+                const liveBadge = snap.isLiveInside
+                    ? `<div style="color: #ea4335; font-size: 11px; font-weight: 700; margin: 2px 0 4px 0; display: flex; align-items: center; gap: 4px;">
+                         <span style="width: 6.5px; height: 6.5px; background-color: #ea4335; border-radius: 50%; display: inline-block;"></span>
+                         Live
+                       </div>`
+                    : '';
+
+                card.innerHTML = `
+                    <img src="${snap.imageData}" class="snapshot-img" loading="lazy">
+                    <div class="snapshot-info">
+                        <div class="snapshot-name">${snap.name}</div>
+                        <div class="snapshot-coords">Lat: ${snap.center.lat.toFixed(3)}, Lng: ${snap.center.lng.toFixed(3)}</div>
+                        ${liveBadge}
+                        ${distStr}
+                        <div class="card-actions">
+                            <button class="btn-text btn-view" onclick="openViewer(${index})">TRACK & VIEW</button>
+                            <button class="btn-text btn-edit" onclick="editSnapshotName(${snap.id})">EDIT</button>
+                            <button class="btn-text btn-delete" onclick="deleteSnapshot(${snap.id})">DELETE</button>
+                        </div>
+                    </div>
+                `;
+                galleryGrid.appendChild(card);
+            });
+        }
+
+        window.deleteSnapshot = function (id) {
+            if (confirm("Delete this offline map?")) {
+                db.snapshots.delete(id).then(loadSnapshots);
+            }
+        };
+
+        window.editSnapshotName = function (id) {
+            db.snapshots.get(id).then(snap => {
+                if (!snap) return;
+                const newName = prompt("Edit name for this location:", snap.name);
+                if (newName !== null && newName.trim() !== "") {
+                    db.snapshots.update(id, { name: newName.trim() }).then(() => {
+                        showToast("Name updated!");
+                        loadSnapshots();
+                    });
+                }
+            }).catch(err => {
+                console.error(err);
+                showToast("Failed to update name");
+            });
+        };
+
+        // --- 8. Offline Viewer Logic (Updated & Improved) ---
+        let viewerWatchId = null;
+        let currentZoom = 1;
+        let currentPanX = 0;
+        let currentPanY = 0;
+
+        // Open viewer by Index in the sorted array
+        window.openViewer = function (index) {
+            if (index < 0 || index >= allSnapshots.length) return;
+
+            currentViewerIndex = index;
+            const snap = allSnapshots[index];
+
+            const modal = document.getElementById('viewer-modal');
+            const img = document.getElementById('viewer-img');
+            const title = document.getElementById('viewer-title');
+            const transformLayer = document.getElementById('viewer-transform-layer');
+
+            // Reset Zoom & Pan
+            currentZoom = 1;
+            currentPanX = 0;
+            currentPanY = 0;
+            transformLayer.style.transform = `translate(0px, 0px) scale(1)`;
+
+            img.src = snap.imageData;
+            title.innerText = snap.name;
+            modal.style.display = 'flex';
+
+            startOfflineTracking(snap);
+        };
+
+        window.nextImage = function () {
+            if (currentViewerIndex < allSnapshots.length - 1) {
+                openViewer(currentViewerIndex + 1);
+            } else {
+                showToast("No more images");
+            }
+        };
+
+        window.prevImage = function () {
+            if (currentViewerIndex > 0) {
+                openViewer(currentViewerIndex - 1);
+            } else {
+                showToast("This is the first image");
+            }
+        };
+
+        window.closeViewer = function () {
+            const modal = document.getElementById('viewer-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+            if (viewerWatchId) {
+                navigator.geolocation.clearWatch(viewerWatchId);
+                viewerWatchId = null;
+            }
+        };
+
+        // Zoom Logic
+        window.adjustZoom = function (delta) {
+            const transformLayer = document.getElementById('viewer-transform-layer');
+            currentZoom += delta;
+            if (currentZoom < 0.5) currentZoom = 0.5;
+            if (currentZoom > 5) currentZoom = 5;
+            transformLayer.style.transform = `translate(${currentPanX}px, ${currentPanY}px) scale(${currentZoom})`;
+        };
+
+        // Pan & Pinch-to-zoom/Wheel-zoom Logic for Viewer
+        const viewerContent = document.getElementById('viewer-content');
+        let isDragging = false;
+        let startX, startY;
+        let tpCache = []; // Touch point cache
+        let prevDiff = -1; // Previous distance between two touches for pinch-to-zoom
+
+        // Mouse Wheel Zoom
+        viewerContent.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY < 0 ? 0.15 : -0.15;
+            adjustZoom(delta);
+        }, { passive: false });
+
+        viewerContent.addEventListener('mousedown', startDrag);
+        viewerContent.addEventListener('touchstart', (e) => {
+            if (e.target.closest('.viewer-btn')) return;
+
+            if (e.touches.length === 2) {
+                isDragging = false; // Disable dragging during pinch
+                tpCache = [e.touches[0], e.touches[1]];
+                prevDiff = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            } else if (e.touches.length === 1) {
+                startDrag(e);
+            }
+        }, { passive: false });
+
+        viewerContent.addEventListener('mousemove', drag);
+        viewerContent.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                // Pinch to Zoom
+                const curDiff = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+
+                if (prevDiff > 0) {
+                    const delta = (curDiff - prevDiff) * 0.01;
+                    adjustZoom(delta);
+                }
+                prevDiff = curDiff;
+            } else if (e.touches.length === 1) {
+                drag(e);
+            }
+        }, { passive: false });
+
+        viewerContent.addEventListener('mouseup', endDrag);
+        viewerContent.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                prevDiff = -1;
+            }
+            endDrag();
+        });
+
+        function startDrag(e) {
+            if (e.target.closest('.viewer-btn')) return;
+            isDragging = true;
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            startX = clientX - currentPanX;
+            startY = clientY - currentPanY;
+        }
+
+        function drag(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            currentPanX = clientX - startX;
+            currentPanY = clientY - startY;
+            const transformLayer = document.getElementById('viewer-transform-layer');
+            transformLayer.style.transform = `translate(${currentPanX}px, ${currentPanY}px) scale(${currentZoom})`;
+        }
+
+        function endDrag() {
+            isDragging = false;
+        }
+
+        // --- IMPROVED OFFLINE TRACKING LOGIC ---
+        function startOfflineTracking(snap) {
+            const marker = document.getElementById('offline-user-marker');
+            const status = document.getElementById('viewer-status');
+
+            status.innerText = "Acquiring GPS...";
+            status.style.background = "rgba(0,0,0,0.7)";
+            status.style.color = "#fff";
+            marker.style.display = 'none';
+            marker.innerHTML = '';
+
+            let offlineLastHeadingPosition = null;
+            let offlineCurrentHeading = null;
+
+            if (viewerWatchId) navigator.geolocation.clearWatch(viewerWatchId);
+
+            viewerWatchId = navigator.geolocation.watchPosition((pos) => {
+                const userLat = pos.coords.latitude;
+                const userLng = pos.coords.longitude;
+                const b = snap.bounds;
+
+                // Check if user is inside the map bounds
+                if (userLat <= b.north && userLat >= b.south && userLng >= b.west && userLng <= b.east) {
+                    status.innerText = "Tracking Active";
+                    status.style.background = "rgba(34, 197, 94, 0.8)"; // Green
+                    status.style.color = "#fff";
+
+                    // Determine heading/direction
+                    let heading = null;
+                    if (pos.coords.heading !== null && pos.coords.heading !== undefined && !isNaN(pos.coords.heading)) {
+                        heading = pos.coords.heading;
+                        offlineCurrentHeading = heading;
+                    } else {
+                        // Calculate bearing from previous location if we have moved enough
+                        if (!offlineLastHeadingPosition) {
+                            offlineLastHeadingPosition = { lat: userLat, lng: userLng };
+                        } else {
+                            const dist = getDistance(offlineLastHeadingPosition.lat, offlineLastHeadingPosition.lng, userLat, userLng);
+                            if (dist > 0.004) { // > 4 meters
+                                heading = calculateBearing(offlineLastHeadingPosition.lat, offlineLastHeadingPosition.lng, userLat, userLng);
+                                offlineCurrentHeading = heading;
+                                offlineLastHeadingPosition = { lat: userLat, lng: userLng };
+                            } else {
+                                heading = offlineCurrentHeading;
+                            }
+                        }
+                    }
+
+                    // Calculate Percentage Position relative to bounds using Web Mercator Projection
+                    // This prevents marker drift when zoomed out on the captured map image
+                    function projectLat(lat) {
+                        const rad = lat * Math.PI / 180;
+                        return Math.log(Math.tan(Math.PI / 4 + rad / 2));
+                    }
+                    const yNorth = projectLat(b.north);
+                    const ySouth = projectLat(b.south);
+                    const yUser = projectLat(userLat);
+                    const topPct = ((yNorth - yUser) / (yNorth - ySouth)) * 100;
+
+                    const lngRange = b.east - b.west;
+                    const lngOffset = userLng - b.west;
+                    const leftPct = (lngOffset / lngRange) * 100;
+
+                    // Apply position using percentages
+                    marker.style.top = `${topPct}%`;
+                    marker.style.left = `${leftPct}%`;
+                    marker.innerHTML = createMarkerIconHtml(heading);
+                    marker.style.display = 'block';
+
+                } else {
+                    status.innerText = "Outside Map Area";
+                    status.style.background = "rgba(239, 68, 68, 0.8)"; // Red
+                    status.style.color = "#fff";
+                    marker.style.display = 'none';
+                    marker.innerHTML = '';
+                }
+
+            }, (err) => {
+                status.innerText = "GPS Error";
+                status.style.background = "rgba(239, 68, 68, 0.8)";
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 2000
+            });
+        }
+
+        window.toggleVibrationNavigation = function () {
+            vibrationNavigationActive = !vibrationNavigationActive;
+            const btn = document.getElementById('vibrate-toggle-btn');
+            if (vibrationNavigationActive) {
+                btn.style.backgroundColor = '#e27200'; // Orange theme for vibration mode
+                showToast("Vibration Navigation Active (1s for Left, 3s for Right)");
+
+                // Play test audio voice + beep alerts to confirm activation and request browser permissions
+                playAudioVoiceAlert("Active");
+                playBeep(1000, 150);
+
+                if (navigator.vibrate) {
+                    navigator.vibrate([200, 100, 200]);
+                }
+            } else {
+                btn.style.backgroundColor = 'var(--text-secondary)';
+                showToast("Vibration Navigation Disabled");
+            }
+        };
+
+        function checkRouteTurnProximity(userLat, userLng) {
+            if (!vibrationNavigationActive || !currentRouteSteps || currentRouteSteps.length === 0) return;
+
+            let nextTurn = null;
+
+            // Find the FIRST upcoming left or right turn
+            for (let i = 0; i < currentRouteSteps.length; i++) {
+                const step = currentRouteSteps[i];
+                if (!step.maneuver || !step.maneuver.location) continue;
+
+                const modifier = step.maneuver.modifier;
+                if (!modifier) continue;
+
+                const m = modifier.toLowerCase();
+                const isLeft = m.includes('left');
+                const isRight = m.includes('right');
+
+                if (isLeft || isRight) {
+                    nextTurn = { step, isLeft, isRight };
+                    break;
+                }
+            }
+
+            if (!nextTurn) return;
+
+            const turnLng = nextTurn.step.maneuver.location[0];
+            const turnLat = nextTurn.step.maneuver.location[1];
+            const distanceMeters = getDistance(userLat, userLng, turnLat, turnLng) * 1000;
+
+            // Check if we already vibrated for a turn near this location (within 30 meters)
+            // This handles OSRM route recalculation coordinate shifts.
+            let alreadyVibrated = false;
+            for (let i = 0; i < vibratedTurns.length; i++) {
+                const vt = vibratedTurns[i];
+                const d = getDistance(turnLat, turnLng, vt.lat, vt.lng) * 1000;
+                if (d < 30) {
+                    alreadyVibrated = true;
+                    
+                    // If user has moved away > 40 meters from the previously vibrated turn,
+                    // we can clear it so it triggers again if they actually backtrack.
+                    const distFromUser = getDistance(userLat, userLng, vt.lat, vt.lng) * 1000;
+                    if (distFromUser > 40) {
+                        vibratedTurns.splice(i, 1);
+                        alreadyVibrated = false; 
+                    }
+                    break;
+                }
+            }
+
+            if (alreadyVibrated) return;
+
+            // Vibrate and announce 15 meters before the turn (increased from 10m for better reaction time)
+            if (distanceMeters <= 15) {
+                vibratedTurns.push({ lat: turnLat, lng: turnLng, time: Date.now() });
+
+                // Keep only the last 5 turns to prevent memory leak
+                if (vibratedTurns.length > 5) {
+                    vibratedTurns.shift();
+                }
+
+                const direction = nextTurn.isLeft ? "LEFT" : "RIGHT";
+
+                // Voice Speech and Synthesizer Beep fallbacks for file:// protocols, iOS Safari, and device-locked vibrations
+                playAudioVoiceAlert(direction);
+                if (nextTurn.isLeft) {
+                    playBeep(800, 300); // 1 beep for left
+                } else if (nextTurn.isRight) {
+                    // 3 beeps for right
+                    playBeep(1200, 300);
+                    setTimeout(() => playBeep(1200, 300), 500);
+                    setTimeout(() => playBeep(1200, 300), 1000);
+                }
+
+                if (navigator.vibrate) {
+                    if (nextTurn.isLeft) {
+                        navigator.vibrate(1000); // 1s vibration for left
+                        showToast("Turn LEFT ahead! 📳");
+                    } else if (nextTurn.isRight) {
+                        navigator.vibrate(3000); // 3s vibration for right
+                        showToast("Turn RIGHT ahead! 📳📳📳");
+                    }
+                } else {
+                    showToast(`Turn approaching: ${direction} in ${distanceMeters.toFixed(0)}m (Vibrate unsupported)`);
+                }
+            }
+        }
+
+        // Voice speech synthesis alert fallback
+        function playAudioVoiceAlert(direction) {
+            try {
+                if (window.speechSynthesis) {
+                    // Cancel previous utterances to avoid lag
+                    window.speechSynthesis.cancel();
+
+                    const phrase = direction === "Active" ? "Vibration navigation active" : `Turn ${direction.toLowerCase()} in ten meters`;
+                    const speech = new SpeechSynthesisUtterance(phrase);
+                    speech.lang = 'en-US';
+                    speech.rate = 1.0;
+                    speech.pitch = 1.0;
+                    window.speechSynthesis.speak(speech);
+                }
+            } catch (e) {
+                console.warn("Speech Synthesis failed:", e);
+            }
+        }
+
+        // Synthesized audio beep alert fallback
+        function playBeep(frequency, durationMs) {
+            try {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContextClass) return;
+
+                const audioCtx = new AudioContextClass();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.frequency.value = frequency;
+                oscillator.type = 'sine';
+
+                gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + durationMs / 1000);
+
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + durationMs / 1000);
+            } catch (e) {
+                console.warn("Audio Context beep failed:", e);
+            }
+        }
+
+        function showToast(msg) {
+            if (window.AndroidNative && typeof window.AndroidNative.showNativeToast === 'function') {
+                try {
+                    window.AndroidNative.showNativeToast(msg);
+                    return; // skip web-based toast
+                } catch (e) {
+                    console.error("AndroidNative.showNativeToast failed:", e);
+                }
+            }
+            toast.innerText = msg;
+            toast.className = "show";
+            setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+        }
+
+        // Initial Load
+        loadSnapshots();
+        loadPlaces();
+
+        // --- Screen Wake Lock API to prevent screen off ---
+        let wakeLock = null;
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake Lock active!');
+                }
+            } catch (err) {
+                console.warn(`Wake Lock Error: ${err.name}, ${err.message}`);
+            }
+        }
+
+        requestWakeLock();
+
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                await requestWakeLock();
+            }
+        });
+
+    </script>
+</body>
+
+</html>

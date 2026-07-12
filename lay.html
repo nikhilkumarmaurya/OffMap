@@ -1,0 +1,2827 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NMap - Offline Layer Map & Tracker</title>
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="leaflet.css">
+    <script src="leaflet.js"></script>
+
+    <script src="dexie.min.js"></script>
+
+    <style>
+        :root {
+            --primary-color: #1a73e8;
+            --secondary-color: #fff;
+            --accent-color: #ea4335;
+            --background-color: #f8f9fa;
+            --surface-color: #ffffff;
+            --text-primary: #202124;
+            --text-secondary: #5f6368;
+            --shadow-elevation-2: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+            --shadow-elevation-6: 0 4px 5px 0 rgba(60, 64, 67, 0.14), 0 1px 10px 0 rgba(60, 64, 67, 0.12), 0 2px 4px -1px rgba(60, 64, 67, 0.2);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Custom SVG Icon Styles */
+        .icon {
+            width: 24px;
+            height: 24px;
+            fill: currentColor;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        .icon-sm {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* Header */
+        header {
+            background-color: var(--surface-color);
+            color: var(--text-primary);
+            padding: 12px 16px;
+            box-shadow: var(--shadow-elevation-2);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        header h1 {
+            font-size: 18px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-toggle-map {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: inherit;
+            flex-shrink: 0;
+            transition: background-color 0.2s;
+        }
+
+        /* Main Content */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* Map Container - Height Increased by 30% */
+        #map-container {
+            height: 65vh;
+            width: 100%;
+            position: relative;
+            z-index: 1;
+            display: none;
+            transition: height 0.3s ease;
+        }
+
+        #map-container.visible {
+            display: block;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+
+        /* Gallery Section */
+        #gallery-section {
+            padding: 16px;
+            background-color: var(--background-color);
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #gallery-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            padding-bottom: 100px;
+        }
+
+        /* Snapshot/Area Card */
+        .snapshot-card {
+            background: var(--surface-color);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--shadow-elevation-2);
+            display: flex;
+            flex-direction: row;
+            height: 110px;
+            transition: transform 0.2s;
+            position: relative;
+        }
+
+        .snapshot-card:active {
+            transform: scale(0.98);
+        }
+
+        .snapshot-info {
+            padding: 10px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .snapshot-name {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 2px;
+            color: var(--text-primary);
+        }
+
+        .snapshot-coords {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 2px;
+        }
+
+        .distance-badge {
+            display: inline-block;
+            background: #e8f0fe;
+            color: var(--primary-color);
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-weight: 500;
+            align-self: flex-start;
+        }
+
+        .card-actions {
+            margin-top: auto;
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn-text {
+            border: none;
+            background: none;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 4px 0;
+            font-family: inherit;
+        }
+
+        .btn-view {
+            color: var(--primary-color);
+        }
+
+        .btn-edit {
+            color: #f2a600;
+        }
+
+        .btn-delete {
+            color: var(--accent-color);
+        }
+
+        /* Floating Action Buttons */
+        .fab-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 1000;
+        }
+
+        .fab {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-elevation-6);
+            cursor: pointer;
+            border: none;
+            outline: none;
+            transition: transform 0.2s;
+        }
+
+        .fab:active {
+            transform: scale(0.95);
+        }
+
+        #download-btn {
+            background-color: var(--primary-color);
+            color: white;
+            display: none;
+        }
+
+        #gps-btn {
+            background-color: var(--surface-color);
+            color: var(--text-secondary);
+            width: 48px;
+            height: 48px;
+        }
+
+        #gps-btn.active {
+            color: var(--primary-color);
+            background-color: #e8f0fe;
+        }
+
+        /* Loading Overlay */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            color: var(--primary-color);
+            flex-direction: column;
+            font-weight: 500;
+        }
+
+        .spinner {
+            border: 4px solid #e0e0e0;
+            border-radius: 50%;
+            border-top: 4px solid var(--primary-color);
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Toast */
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #323232;
+            color: #fff;
+            text-align: center;
+            border-radius: 4px;
+            padding: 14px 24px;
+            position: fixed;
+            z-index: 3000;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            font-size: 14px;
+            box-shadow: var(--shadow-elevation-6);
+        }
+
+        #toast.show {
+            visibility: visible;
+            animation: fadein 0.5s, fadeout 0.5s 2.5s;
+        }
+
+        /* Location Pulse Markers */
+        .user-location-marker-wrapper {
+            position: relative;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .user-location-pulse {
+            position: absolute;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(26, 115, 232, 0.25);
+            animation: location-pulse 2s infinite ease-out;
+            pointer-events: none;
+        }
+
+        @keyframes location-pulse {
+            0% {
+                transform: scale(0.6);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(2.2);
+                opacity: 0;
+            }
+        }
+
+        .user-location-circle {
+            width: 14px;
+            height: 14px;
+            background-color: var(--primary-color);
+            border: 2.5px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+            z-index: 2;
+        }
+
+        .user-location-arrow-container {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s ease-out;
+            z-index: 2;
+        }
+
+        .user-location-leaflet-marker {
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+        }
+
+        /* Sidebar Drawer Styles */
+        .drawer {
+            position: fixed;
+            top: 0;
+            right: -300px;
+            width: 300px;
+            height: 100%;
+            background: var(--surface-color);
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.15);
+            z-index: 3000;
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .drawer.open {
+            right: 0;
+        }
+
+        .drawer-header {
+            padding: 16px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .drawer-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .drawer-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+        }
+
+        .drawer-body {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .drawer-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-decoration: none;
+            text-align: center;
+            box-shadow: var(--shadow-elevation-2);
+            transition: background-color 0.2s;
+        }
+
+        .drawer-btn:hover {
+            background: #1557b0;
+        }
+
+        .drawer-stat {
+            background: var(--background-color);
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .drawer-stat-val {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .drawer-stat-lbl {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+
+        .drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 2999;
+            display: none;
+            backdrop-filter: blur(2px);
+        }
+
+        .drawer-overlay.visible {
+            display: block;
+        }
+
+
+
+        @keyframes fadein {
+            from {
+                bottom: 0;
+                opacity: 0;
+            }
+
+            to {
+                bottom: 30px;
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeout {
+            from {
+                bottom: 30px;
+                opacity: 1;
+            }
+
+            to {
+                bottom: 0;
+                opacity: 0;
+            }
+        }
+
+        /* Route Planner Styles */
+        .route-banner {
+            position: absolute;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 30px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            box-shadow: var(--shadow-elevation-6);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+            transition: opacity 0.3s, transform 0.3s;
+            opacity: 0;
+            transform: translate(-50%, -10px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .route-banner.visible {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+
+        .route-card {
+            display: none !important;
+        }
+
+        .route-card.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .route-info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .route-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .route-meta {
+            display: flex;
+            gap: 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .route-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: 600;
+        }
+
+        .route-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-route-action {
+            flex: 1;
+            border: none;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            font-family: inherit;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .btn-route-action:active {
+            transform: scale(0.98);
+        }
+
+        .btn-route-clear {
+            background: #f1f3f4;
+            color: var(--text-primary);
+        }
+
+        .btn-route-clear:hover {
+            background: #e8eaed;
+        }
+
+        /* Search Overlay Dropdown */
+        .search-container {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            padding: 10px 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .search-container.visible {
+            display: flex;
+        }
+
+        .search-input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-input-wrapper input {
+            width: 100%;
+            padding: 10px 40px 10px 12px;
+            border: 1.5px solid rgba(0, 0, 0, 0.12);
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        .search-input-wrapper input:focus {
+            border-color: var(--primary-color);
+        }
+
+        .search-clear-btn {
+            position: absolute;
+            right: 10px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px;
+        }
+
+        .search-results-list {
+            max-height: 200px;
+            overflow-y: auto;
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 8px;
+            background: white;
+        }
+
+        .search-result-item {
+            padding: 10px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-item:hover {
+            background-color: #f1f3f4;
+        }
+
+        .place-name-text {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn-search-route {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+
+        .btn-search-route:hover {
+            background: #1557b0;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header style="position: relative;">
+        <h1>NMap</h1>
+        <div class="header-actions">
+            <!-- Search Toggle Button (Initially Hidden, Toggles search container) -->
+            <button class="btn-toggle-map" id="search-toggle-btn" onclick="toggleSearchBar()"
+                style="display: none; background-color: var(--text-secondary);" title="Search places">
+                <!-- SVG Search Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path
+                        d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+                        fill="white" />
+                </svg>
+            </button>
+
+            <!-- Label Toggle Button -->
+            <button class="btn-toggle-map" id="label-toggle-btn" onclick="toggleMapLabels()"
+                style="display: none; background-color: var(--text-secondary);" title="Hide Map Labels (Satellite Only)">
+                <!-- SVG Label/Show Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="white" />
+                </svg>
+            </button>
+
+            <!-- Vibration Navigation Toggle Button (Initially Hidden next to search) -->
+            <button class="btn-toggle-map" id="vibrate-toggle-btn" onclick="toggleVibrationNavigation()"
+                style="display: none; background-color: var(--text-secondary);" title="Vibrate on Turns">
+                <!-- SVG Phone Vibrate Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path
+                        d="M16.5 3h-9C6.12 3 5 4.12 5 5.5v13C5 19.88 6.12 21 7.5 21h9c1.38 0 2.5-1.12 2.5-2.5v-13C19 4.12 17.88 3 16.5 3zm.5 15.5c0 .28-.22.5-.5.5h-9c-.28 0-.5-.22-.5-.5v-13c0-.28.22-.5.5-.5h9c.28 0 .5.22.5.5v13zM12 19c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"
+                        fill="white" />
+                    <path
+                        d="M2 9.5c-.55 0-1 .45-1 1v3c0 .55.45 1 1 1s1-.45 1-1v-3c0-.55-.45-1-1-1zm2-3c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1s1-.45 1-1v-8c0-.55-.45-1-1-1z"
+                        fill="white" />
+                    <path
+                        d="M22 9.5c-.55 0-1 .45-1 1v3c0 .55.45 1 1 1s1-.45 1-1v-3c0-.55-.45-1-1-1zm-2-3c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1s1-.45 1-1v-8c0-.55-.45-1-1-1z"
+                        fill="white" />
+                </svg>
+            </button>
+
+            <!-- Add Place Toggle Button (Initially Hidden) -->
+            <button class="btn-toggle-map" id="add-place-btn" onclick="toggleAddPlaceMode()"
+                style="display: none; background-color: var(--text-secondary);" title="Add Place">
+                <!-- SVG Pin Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path
+                        d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"
+                        fill="white" />
+                </svg>
+            </button>
+
+            <!-- Route Mode Toggle Button (Initially Hidden) -->
+            <button class="btn-toggle-map" id="route-mode-btn" onclick="toggleRouteMode()"
+                style="display: none; background-color: var(--text-secondary);" title="Route Planner">
+                <!-- SVG Route Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path
+                        d="M22.41 12.3l-9-9c-.39-.39-1.02-.39-1.41 0l-9 9c-.39.39-.39 1.02 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9c.39-.39.39-1.02 0-1.41zM14 18.5V15h-4v-3h4V8.5L18.5 12 14 18.5z"
+                        fill="white" />
+                </svg>
+            </button>
+
+
+
+            <!-- Menu Button -->
+            <button class="btn-toggle-map" id="menu-btn" onclick="toggleDrawer(true)" style="background-color: var(--text-secondary);" title="Menu Options">
+                <!-- Menu Hamburger Icon -->
+                <svg class="icon icon-sm" viewBox="0 0 24 24" style="fill:white;">
+                    <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Search overlay container dropdown -->
+        <div id="search-container" class="search-container">
+            <div class="search-input-wrapper">
+                <input type="text" id="search-input" placeholder="Search saved places..." oninput="handleSearchInput()">
+                <button id="search-clear-btn" class="search-clear-btn" onclick="clearSearchInput()" style="display:none;">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                    </svg>
+                </button>
+            </div>
+            <ul id="search-results" class="search-results-list" style="display:none;"></ul>
+        </div>
+    </header>
+
+    <!-- Side Menu Drawer & Overlay -->
+    <div id="drawer-overlay" class="drawer-overlay" onclick="toggleDrawer(false)"></div>
+    <div id="drawer" class="drawer">
+        <div class="drawer-header">
+            <span class="drawer-title">Menu Options</span>
+            <button class="drawer-close" onclick="toggleDrawer(false)">
+                <!-- Close SVG Icon -->
+                <svg class="icon" viewBox="0 0 24 24" style="width:24px; height:24px;">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
+            </button>
+        </div>
+        <div class="drawer-body">
+            <div class="drawer-stat">
+                <div id="drawer-places-count" class="drawer-stat-val">0</div>
+                <div class="drawer-stat-lbl">Saved Places</div>
+            </div>
+            <div class="drawer-stat">
+                <div id="drawer-areas-count" class="drawer-stat-val">0</div>
+                <div class="drawer-stat-lbl">Saved Offline Regions</div>
+            </div>
+
+            <button class="drawer-btn" id="force-offline-btn" onclick="toggleForceOffline()" style="margin-top: auto; background-color: var(--text-secondary);">
+                <!-- SVG Wifi Off Icon -->
+                <svg class="icon" viewBox="0 0 24 24" style="fill:white; width: 18px; height: 18px;">
+                    <path d="M23.64 7c-.45-.34-4.93-4-11.64-4C5.28 3 .81 6.66.36 7l10.08 12.56c.8 1 2.32 1 3.12 0L23.64 7zm-11.64 9L3.52 7.51c.98-.75 4.3-3.01 8.48-3.01s7.5 2.26 8.48 3.01L12 16zM1 9l2 2c2.4-2.4 5.9-3.4 9-3s6.1 1.6 8 4l2-2c-2.4-2.8-6.5-4-10-4S4.4 6.2 1 9z"/>
+                </svg>
+                Go Offline Mode
+            </button>
+
+            <a href="backup.html" class="drawer-btn" style="margin-top: 10px;">
+                <!-- Sync/Backup Icon -->
+                <svg class="icon" viewBox="0 0 24 24" style="fill:white; width: 18px; height: 18px;">
+                    <path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z" />
+                </svg>
+                NMap Backup & Sync
+            </a>
+        </div>
+    </div>
+
+    <main>
+        <!-- Map Container -->
+        <div id="map-container">
+
+
+            <!-- Route Planning Overlays -->
+            <div id="route-banner" class="route-banner">
+                Route Mode: Tap to set Start point
+            </div>
+
+            <!-- Route Info Card -->
+            <div id="route-card" class="route-card">
+                <div class="route-info-row">
+                    <span class="route-title">Best Route</span>
+                    <div class="route-meta">
+                        <div class="route-meta-item">
+                            <!-- Distance Icon -->
+                            <svg class="icon icon-sm" viewBox="0 0 24 24" style="fill: var(--text-secondary);">
+                                <path
+                                    d="M10.47 2.05L2 10.5l8.47 8.45 1.41-1.41-6.06-6.04H22v-2H5.82l6.06-6.04-1.41-1.41z" />
+                            </svg>
+                            <span id="route-distance">- km</span>
+                        </div>
+                        <div class="route-meta-item">
+                            <!-- Time Icon (Access Time / Clock) -->
+                            <svg class="icon icon-sm" viewBox="0 0 24 24" style="fill: var(--text-secondary);">
+                                <path
+                                    d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
+                            </svg>
+                            <span id="route-duration">- mins</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="route-actions">
+                    <button class="btn-route-action btn-route-clear" onclick="clearRoute()">Clear Route</button>
+                </div>
+            </div>
+            <div id="map"></div>
+        </div>
+
+        <!-- Gallery Section (Displays Offline Areas) -->
+        <div id="gallery-section">
+            <div class="section-title">
+                <span>Saved Offline Regions</span>
+                <span id="count-badge" style="font-weight:400; font-size:11px;">0 regions</span>
+            </div>
+            <div id="gallery-grid">
+                <!-- Offline Areas list injected here -->
+            </div>
+        </div>
+
+        <!-- Floating Action Buttons -->
+        <div class="fab-container">
+            <!-- GPS Button -->
+            <button class="fab" id="gps-btn" aria-label="Toggle GPS Tracking">
+                <!-- SVG GPS Crosshair Icon -->
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+                </svg>
+            </button>
+            <!-- Download Button (Only visible when map is open) -->
+            <button class="fab" id="download-btn" aria-label="Download Offline Area">
+                <!-- SVG Cloud Download Icon -->
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z" />
+                </svg>
+            </button>
+        </div>
+    </main>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <span>Downloading offline area...</span>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast">Notification</div>
+
+    <script>
+        // --- 1. Database Setup (Dexie.js) ---
+        const db = new Dexie("OfflineMapDB_v4");
+        db.version(3).stores({
+            snapshots: '++id, timestamp, name',
+            places: '++id, name, lat, lng',
+            areas: '++id, timestamp, name',
+            tiles: 'key, areaId',
+            routes: 'placeId'
+        });
+
+        // Helper to find and upscale parent tiles when offline or download fails
+        const findAndRenderParentTile = async (coords, tile, style) => {
+            for (let d = 1; d <= 5; d++) { // Search up to 5 levels up
+                const pz = coords.z - d;
+                if (pz < 0) break;
+                const numTiles = Math.pow(2, d);
+                const px = Math.floor(coords.x / numTiles);
+                const py = Math.floor(coords.y / numTiles);
+                const parentKey = `${style}_${pz}_${px}_${py}`;
+
+                try {
+                    const cachedParent = await db.tiles.get(parentKey);
+                    if (cachedParent && cachedParent.blob) {
+                        const parentImg = new Image();
+                        parentImg.crossOrigin = "anonymous";
+                        const url = URL.createObjectURL(cachedParent.blob);
+                        
+                        return new Promise((resolve) => {
+                            parentImg.onload = function() {
+                                URL.revokeObjectURL(url);
+                                const canvas = document.createElement('canvas');
+                                canvas.width = 256;
+                                canvas.height = 256;
+                                const ctx = canvas.getContext('2d');
+                                
+                                const portionSize = 256 / numTiles;
+                                const dx = coords.x % numTiles;
+                                const dy = coords.y % numTiles;
+                                const offsetX = dx * portionSize;
+                                const offsetY = dy * portionSize;
+                                
+                                ctx.drawImage(parentImg, offsetX, offsetY, portionSize, portionSize, 0, 0, 256, 256);
+                                tile.src = canvas.toDataURL('image/jpeg', 0.8);
+                                resolve(true);
+                            };
+                            parentImg.onerror = function() {
+                                URL.revokeObjectURL(url);
+                                resolve(false);
+                            };
+                            parentImg.src = url;
+                        });
+                    }
+                } catch (err) {
+                    console.error("Parent tile check failed:", err);
+                }
+            }
+            return false;
+        };
+
+        // Define Offline-Capable Map Layer
+        const OfflineTileLayer = L.TileLayer.extend({
+            createTile: function (coords, done) {
+                const tile = document.createElement('img');
+                L.DomEvent.on(tile, 'load', L.Util.bind(this._tileOnLoad, this, done, tile));
+                L.DomEvent.on(tile, 'error', L.Util.bind(this._tileOnError, this, done, tile));
+
+                if (this.options.crossOrigin) {
+                    tile.crossOrigin = this.options.crossOrigin;
+                }
+                tile.alt = '';
+                tile.setAttribute('role', 'presentation');
+
+                const style = getTileStyle();
+                const cacheKey = `${style}_${coords.z}_${coords.x}_${coords.y}`;
+
+                db.tiles.get(cacheKey).then(async cachedTile => {
+                    if (cachedTile && cachedTile.blob) {
+                        const url = URL.createObjectURL(cachedTile.blob);
+                        tile.src = url;
+                        tile.onload = function() {
+                            URL.revokeObjectURL(url);
+                            if (done) done(null, tile);
+                        };
+                    } else {
+                        if (!navigator.onLine || forceOfflineMode) {
+                            const success = await findAndRenderParentTile(coords, tile, style);
+                            if (!success) {
+                                if (done) done(new Error('Offline: No cached tile or parent tile found'));
+                            }
+                        } else {
+                            tile.src = this.getTileUrl(coords);
+                            tile.onerror = async function() {
+                                tile.onerror = null;
+                                const success = await findAndRenderParentTile(coords, tile, style);
+                                if (!success) {
+                                    if (done) done(new Error('Tile load failed'));
+                                }
+                            };
+                        }
+                    }
+                }).catch(async err => {
+                    console.error("Dexie tile cache read failed:", err);
+                    const success = await findAndRenderParentTile(coords, tile, style);
+                    if (!success) {
+                        tile.src = this.getTileUrl(coords);
+                    }
+                });
+
+                return tile;
+            }
+        });
+
+        L.offlineTileLayer = function (url, options) {
+            return new OfflineTileLayer(url, options);
+        };
+
+        // --- 2. Map Initialization ---
+        const map = L.map('map', {
+            preferCanvas: true,
+            zoomControl: false
+        }).setView([20.5937, 78.9629], 5);
+
+        let mapLabelsActive = true;
+        const getTileStyle = () => mapLabelsActive ? 'y' : 's';
+
+        // Load map using custom offline-intercepting tile layer
+        const offlineMapLayer = L.offlineTileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            attribution: 'Google Maps',
+            crossOrigin: 'anonymous'
+        }).addTo(map);
+
+        window.setMapLabels = function(active, quiet = false) {
+            mapLabelsActive = active;
+            const btn = document.getElementById('label-toggle-btn');
+            const style = getTileStyle();
+            
+            if (mapLabelsActive) {
+                btn.style.backgroundColor = 'var(--text-secondary)';
+                btn.title = "Hide Map Labels (Satellite Only)";
+                btn.innerHTML = `
+                    <svg class="icon icon-sm" viewBox="0 0 24 24">
+                        <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="white" />
+                    </svg>
+                `;
+                if (!quiet) showToast("Satellite with Labels (Hybrid)");
+            } else {
+                btn.style.backgroundColor = 'var(--primary-color)';
+                btn.title = "Show Map Labels (Satellite + Names)";
+                btn.innerHTML = `
+                    <svg class="icon icon-sm" viewBox="0 0 24 24">
+                        <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0-4C6.48 3 2 7.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 3 12 3zm0 17c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7z" fill="white" />
+                    </svg>
+                `;
+                if (!quiet) showToast("Satellite Only (No Labels)");
+            }
+            
+            offlineMapLayer.setUrl(`https://mt1.google.com/vt/lyrs=${style}&x={x}&y={y}&z={z}`);
+        };
+
+        window.toggleMapLabels = function() {
+            window.setMapLabels(!mapLabelsActive);
+        };
+
+        let userInteracted = false;
+        map.on('dragstart zoomstart', () => {
+            userInteracted = true;
+        });
+
+        let forceOfflineMode = false;
+        window.toggleForceOffline = function () {
+            forceOfflineMode = !forceOfflineMode;
+            const btn = document.getElementById('force-offline-btn');
+            if (forceOfflineMode) {
+                btn.style.backgroundColor = '#ea4335';
+                btn.title = "Go Online";
+                btn.innerHTML = `
+                    <svg class="icon" viewBox="0 0 24 24" style="fill:white; width: 18px; height: 18px;">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.83 0-.38.03-.75.09-1.12L9 14v1c0 1.1.9 2 2 2v2.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                    </svg>
+                    Go Online Mode
+                `;
+                showToast("Forced Offline Mode Active!");
+            } else {
+                btn.style.backgroundColor = 'var(--text-secondary)';
+                btn.title = "Go Offline (Simulate)";
+                btn.innerHTML = `
+                    <svg class="icon" viewBox="0 0 24 24" style="fill:white; width: 18px; height: 18px;">
+                        <path d="M23.64 7c-.45-.34-4.93-4-11.64-4C5.28 3 .81 6.66.36 7l10.08 12.56c.8 1 2.32 1 3.12 0L23.64 7zm-11.64 9L3.52 7.51c.98-.75 4.3-3.01 8.48-3.01s7.5 2.26 8.48 3.01L12 16zM1 9l2 2c2.4-2.4 5.9-3.4 9-3s6.1 1.6 8 4l2-2c-2.4-2.8-6.5-4-10-4S4.4 6.2 1 9z"/>
+                    </svg>
+                    Go Offline Mode
+                `;
+                showToast("Online Mode Active!");
+            }
+        };
+
+        let liveUserMarker = null;
+        let watchId = null;
+        let currentUserLocation = null; // { lat, lng }
+        let allAreas = []; // Cached offline areas
+        let onlineLastHeadingPosition = null;
+        let onlineCurrentHeading = null;
+        let vibrationNavigationActive = false;
+        let currentRouteSteps = [];
+        let vibratedTurns = [];
+        let lastRouteCalculationLocation = null;
+        let lastRouteCalculationTime = 0;
+
+        // Custom path drawing & tracking state variables
+        let tempDrawPoints = [];
+        let tempDrawPolyline = null;
+        let tempDrawMarkers = [];
+        let customPathDrawingActive = false;
+        let customPathPlaceId = null;
+        let activeCustomRoutePlaceId = null;
+
+        // --- 3. UI Elements ---
+        const downloadBtn = document.getElementById('download-btn');
+        const gpsBtn = document.getElementById('gps-btn');
+        const galleryGrid = document.getElementById('gallery-grid');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const toast = document.getElementById('toast');
+        const countBadge = document.getElementById('count-badge');
+        const mapContainer = document.getElementById('map-container');
+        const toggleMapBtn = document.getElementById('toggle-map-btn');
+
+        // --- 3b. Route Planner State & Constants ---
+        let routeModeActive = false;
+        let routeStartPoint = null;
+        let routeEndPoint = null;
+        let routeStartMarker = null;
+        let routeEndMarker = null;
+        let routePolyline = null;
+        let routeDistanceLabel = null;
+
+        const startIcon = L.divIcon({
+            html: `
+                <div style="
+                    width: 24px;
+                    height: 24px;
+                    background: #34a853;
+                    border: 3px solid #ffffff;
+                    border-radius: 50%;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                ">
+                    <div style="width: 6px; height: 6px; background: white; border-radius: 50%;"></div>
+                </div>
+            `,
+            className: 'user-location-leaflet-marker',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
+
+        const endIcon = L.divIcon({
+            html: `
+                <div style="
+                    width: 24px;
+                    height: 24px;
+                    background: #ea4335;
+                    border: 3px solid #ffffff;
+                    border-radius: 50%;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                ">
+                    <div style="width: 6px; height: 6px; background: white; border-radius: 50%;"></div>
+                </div>
+            `,
+            className: 'user-location-leaflet-marker',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
+
+        // --- 3c. Add Place Planner State & Constants ---
+        let addPlaceModeActive = false;
+        let activePlaceMarkers = [];
+
+        const placeIcon = L.divIcon({
+            html: `
+                <div style="
+                    width: 8px;
+                    height: 8px;
+                    background: #8e24aa;
+                    border: 1.5px solid #ffffff;
+                    border-radius: 50%;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+                "></div>
+            `,
+            className: 'user-location-leaflet-marker',
+            iconSize: [8, 8],
+            iconAnchor: [4, 4]
+        });
+
+        // Track lines & labels for sequential place distances and proximity
+        let distancePolylines = [];
+        let distanceLabels = [];
+        let proximityLines = [];
+
+        // --- 4. Map Visibility Logic ---
+        window.toggleMap = function () {
+            const isVisible = mapContainer.classList.contains('visible');
+            const routeBtn = document.getElementById('route-mode-btn');
+            const addPlaceBtn = document.getElementById('add-place-btn');
+            const searchContainer = document.getElementById('search-container');
+            const searchToggleBtn = document.getElementById('search-toggle-btn');
+            const toggleMapBtn = document.getElementById('toggle-map-btn');
+            if (isVisible) {
+                mapContainer.classList.remove('visible');
+                toggleMapBtn.title = "Show Map";
+                downloadBtn.style.display = 'none';
+                routeBtn.style.display = 'none';
+                addPlaceBtn.style.display = 'none';
+                searchToggleBtn.style.display = 'none';
+                document.getElementById('label-toggle-btn').style.display = 'none';
+                document.getElementById('vibrate-toggle-btn').style.display = 'none';
+                if (vibrationNavigationActive) {
+                    window.toggleVibrationNavigation();
+                }
+                searchContainer.classList.remove('visible');
+                searchToggleBtn.style.backgroundColor = 'var(--text-secondary)';
+                if (routeModeActive) {
+                    window.toggleRouteMode();
+                }
+                if (addPlaceModeActive) {
+                    window.toggleAddPlaceMode();
+                }
+            } else {
+                mapContainer.classList.add('visible');
+                toggleMapBtn.title = "Hide Map";
+                downloadBtn.style.display = 'flex';
+                routeBtn.style.display = 'flex';
+                addPlaceBtn.style.display = 'flex';
+                searchToggleBtn.style.display = 'flex';
+                document.getElementById('label-toggle-btn').style.display = 'flex';
+                document.getElementById('vibrate-toggle-btn').style.display = 'flex';
+                map.invalidateSize();
+                updateDistanceTracker();
+            }
+        };
+
+        window.toggleSearchBar = function () {
+            const container = document.getElementById('search-container');
+            const input = document.getElementById('search-input');
+            const btn = document.getElementById('search-toggle-btn');
+            if (!container) return;
+            const isSearchVisible = container.classList.contains('visible');
+            if (isSearchVisible) {
+                container.classList.remove('visible');
+                if (btn) btn.style.backgroundColor = 'var(--text-secondary)';
+            } else {
+                container.classList.add('visible');
+                if (btn) btn.style.backgroundColor = 'var(--primary-color)';
+                if (input) input.focus();
+            }
+        };
+
+        window.closeSearchBar = function () {
+            const container = document.getElementById('search-container');
+            const btn = document.getElementById('search-toggle-btn');
+            if (container && container.classList.contains('visible')) {
+                container.classList.remove('visible');
+                if (btn) btn.style.backgroundColor = 'var(--text-secondary)';
+            }
+        };
+
+        window.toggleDrawer = async function (show) {
+            const drawer = document.getElementById('drawer');
+            const overlay = document.getElementById('drawer-overlay');
+            if (!drawer || !overlay) return;
+            if (show) {
+                try {
+                    const placesCount = await db.places.count();
+                    const areasCount = await db.areas.count();
+                    const placesCountEl = document.getElementById('drawer-places-count');
+                    const areasCountEl = document.getElementById('drawer-areas-count');
+                    if (placesCountEl) placesCountEl.innerText = placesCount;
+                    if (areasCountEl) areasCountEl.innerText = areasCount;
+                } catch (err) {
+                    console.error("Failed to load counts for drawer:", err);
+                }
+                drawer.classList.add('open');
+                overlay.classList.add('visible');
+            } else {
+                drawer.classList.remove('open');
+                overlay.classList.remove('visible');
+            }
+        };
+
+        // Unified Android Back Button Interceptor for Java WebView
+        window.handleAndroidBack = function () {
+            const drawer = document.getElementById('drawer');
+            if (drawer && drawer.classList.contains('open')) {
+                window.toggleDrawer(false);
+                return true;
+            }
+
+            const searchContainer = document.getElementById('search-container');
+            if (searchContainer && searchContainer.classList.contains('visible')) {
+                window.closeSearchBar();
+                return true;
+            }
+
+            return false;
+        };
+
+        // --- 4b. Route Planner Functions ---
+        window.toggleRouteMode = function () {
+            routeModeActive = !routeModeActive;
+
+            const btn = document.getElementById('route-mode-btn');
+            const banner = document.getElementById('route-banner');
+
+            if (routeModeActive) {
+                if (addPlaceModeActive) {
+                    window.toggleAddPlaceMode();
+                }
+                btn.style.backgroundColor = '#34a853';
+                banner.classList.add('visible');
+
+                clearRoute();
+
+                if (!watchId) {
+                    window.startGpsTracking();
+                }
+
+                if (currentUserLocation) {
+                    routeStartPoint = L.latLng(currentUserLocation.lat, currentUserLocation.lng);
+                    banner.innerText = "Route Mode: Tap to set Destination";
+                } else {
+                    banner.innerText = "Route Mode: Tap to set Start point";
+                }
+
+                map.on('click', onMapClickForRoute);
+            } else {
+                btn.style.backgroundColor = 'var(--text-secondary)';
+                banner.classList.remove('visible');
+                document.getElementById('route-card').classList.remove('visible');
+
+                clearRoute();
+                map.off('click', onMapClickForRoute);
+            }
+        };
+
+        window.toggleAddPlaceMode = function () {
+            addPlaceModeActive = !addPlaceModeActive;
+
+            const btn = document.getElementById('add-place-btn');
+            const banner = document.getElementById('route-banner');
+
+            if (addPlaceModeActive) {
+                if (routeModeActive) {
+                    window.toggleRouteMode();
+                }
+                btn.style.backgroundColor = '#8e24aa';
+                banner.classList.add('visible');
+                banner.innerText = "Drawing Mode: Tap map to add places";
+
+                map.on('click', onMapClickForAddPlace);
+            } else {
+                btn.style.backgroundColor = 'var(--text-secondary)';
+                banner.classList.remove('visible');
+
+                map.off('click', onMapClickForAddPlace);
+
+                if (customPathDrawingActive) {
+                    window.saveCustomPathDrawing();
+                }
+            }
+        };
+
+        function onMapClickForRoute(e) {
+            const banner = document.getElementById('route-banner');
+
+            if (!routeStartPoint) {
+                routeStartPoint = e.latlng;
+                routeStartMarker = L.marker(routeStartPoint, { icon: startIcon }).addTo(map);
+                banner.innerText = "Route Mode: Tap to set Destination";
+            } else if (!routeEndPoint) {
+                routeEndPoint = e.latlng;
+                routeEndMarker = L.marker(routeEndPoint, { icon: endIcon }).addTo(map);
+                banner.innerText = "Route Mode: Calculating route...";
+                calculateAndShowRoute(true);
+            }
+        }
+
+        async function onMapClickForAddPlace(e) {
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+
+            if (customPathDrawingActive) {
+                tempDrawPoints.push([lat, lng]);
+
+                if (tempDrawPolyline) {
+                    tempDrawPolyline.setLatLngs(tempDrawPoints);
+                } else {
+                    tempDrawPolyline = L.polyline(tempDrawPoints, { color: '#8e24aa', weight: 4, dashArray: '5, 8' }).addTo(map);
+                }
+
+                const marker = L.circleMarker([lat, lng], {
+                    radius: 5,
+                    fillColor: '#8e24aa',
+                    color: '#ffffff',
+                    weight: 1.5,
+                    fillOpacity: 1
+                }).addTo(map);
+                tempDrawMarkers.push(marker);
+
+                return;
+            }
+
+            const name = prompt("Enter a name for this place:");
+            if (name === null) return;
+            const finalName = name.trim() || `Place (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+
+            try {
+                await db.places.add({
+                    name: finalName,
+                    lat: lat,
+                    lng: lng
+                });
+                showToast("Place Saved!");
+                loadPlaces();
+            } catch (err) {
+                console.error(err);
+                showToast("Storage Error");
+            }
+        }
+
+        window.startCustomPathDrawing = function (placeId) {
+            if (!addPlaceModeActive) {
+                window.toggleAddPlaceMode();
+            }
+
+            customPathDrawingActive = true;
+            customPathPlaceId = placeId;
+            tempDrawPoints = [];
+            tempDrawMarkers = [];
+            if (tempDrawPolyline) {
+                map.removeLayer(tempDrawPolyline);
+                tempDrawPolyline = null;
+            }
+
+            const banner = document.getElementById('route-banner');
+            banner.innerText = "Drawing Path... Tap map to add line nodes";
+
+            db.places.get(placeId).then(place => {
+                if (place) {
+                    tempDrawPoints.push([place.lat, place.lng]);
+                    const startMarker = L.circleMarker([place.lat, place.lng], {
+                        radius: 6,
+                        fillColor: '#d81b60',
+                        color: '#ffffff',
+                        weight: 2,
+                        fillOpacity: 1
+                    }).addTo(map);
+                    tempDrawMarkers.push(startMarker);
+                }
+            });
+        };
+
+        window.saveCustomPathDrawing = function () {
+            if (!customPathDrawingActive || !customPathPlaceId) return;
+
+            const placeId = customPathPlaceId;
+            const nodes = [...tempDrawPoints];
+
+            db.places.update(placeId, { customRoutePoints: nodes }).then(() => {
+                showToast("Custom Path Saved!");
+                window.cancelCustomPathDrawing();
+                loadPlaces();
+            }).catch(err => {
+                console.error("Save custom path failed:", err);
+                showToast("Failed to save path");
+            });
+        };
+
+        window.cancelCustomPathDrawing = function () {
+            customPathDrawingActive = false;
+            customPathPlaceId = null;
+            tempDrawPoints = [];
+            if (tempDrawPolyline) {
+                map.removeLayer(tempDrawPolyline);
+                tempDrawPolyline = null;
+            }
+            tempDrawMarkers.forEach(m => map.removeLayer(m));
+            tempDrawMarkers = [];
+
+            const banner = document.getElementById('route-banner');
+            if (addPlaceModeActive) {
+                banner.innerText = "Drawing Mode: Tap map to add places";
+            }
+        };
+
+        window.showCustomPathOnMap = function (placeId) {
+            db.places.get(placeId).then(place => {
+                if (!place || !place.customRoutePoints || place.customRoutePoints.length === 0) return;
+
+                if (activeCustomRoutePlaceId === placeId) {
+                    if (routePolyline) {
+                        map.removeLayer(routePolyline);
+                        routePolyline = null;
+                    }
+                    activeCustomRoutePlaceId = null;
+                    showToast("Custom route hidden");
+                    return;
+                }
+
+                if (routePolyline) {
+                    map.removeLayer(routePolyline);
+                }
+
+                routePolyline = L.polyline(place.customRoutePoints, {
+                    color: '#8e24aa',
+                    weight: 5,
+                    opacity: 0.85
+                }).addTo(map);
+
+                activeCustomRoutePlaceId = placeId;
+
+                const bounds = routePolyline.getBounds();
+                map.fitBounds(bounds, { padding: [40, 40] });
+                showToast(`Displaying path for: ${place.name}`);
+            });
+        };
+
+        function calculateStepsFromCoordinates(coordinates) {
+            const steps = [];
+            for (let i = 1; i < coordinates.length - 1; i++) {
+                const pPrev = coordinates[i - 1];
+                const pCurr = coordinates[i];
+                const pNext = coordinates[i + 1];
+
+                const bearing1 = calculateBearing(pPrev[0], pPrev[1], pCurr[0], pCurr[1]);
+                const bearing2 = calculateBearing(pCurr[0], pCurr[1], pNext[0], pNext[1]);
+
+                let diff = bearing2 - bearing1;
+                if (diff > 180) diff -= 360;
+                if (diff < -180) diff += 360;
+
+                const absDiff = Math.abs(diff);
+                // Turn detected if bearing change is between 10 and 180 degrees
+                if (absDiff >= 10 && absDiff <= 180) {
+                    steps.push({
+                        maneuver: {
+                            location: [pCurr[1], pCurr[0]], // [lng, lat]
+                            modifier: diff > 0 ? "right" : "left"
+                        }
+                    });
+                }
+            }
+
+            if (coordinates.length > 0) {
+                const lastPt = coordinates[coordinates.length - 1];
+                steps.push({
+                    maneuver: {
+                        location: [lastPt[1], lastPt[0]],
+                        modifier: "arrive"
+                    }
+                });
+            }
+            return steps;
+        }
+
+        async function calculateAndShowRoute(fitBounds = true, placeId = null) {
+            if (!routeStartPoint || !routeEndPoint) return;
+
+            const url = `https://router.project-osrm.org/route/v1/driving/${routeStartPoint.lng},${routeStartPoint.lat};${routeEndPoint.lng},${routeEndPoint.lat}?overview=full&geometries=geojson&steps=true`;
+
+            try {
+                if (forceOfflineMode) throw new Error("Forced offline mode active");
+                const response = await fetch(url);
+                if (!response.ok) throw new Error("OSRM API Call Failed");
+                const data = await response.json();
+
+                if (!data.routes || data.routes.length === 0) {
+                    showToast("No route found.");
+                    clearRoute();
+                    return;
+                }
+
+                const route = data.routes[0];
+                const coordinates = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+                currentRouteSteps = calculateStepsFromCoordinates(coordinates);
+                vibratedTurns = [];
+
+                if (routePolyline) {
+                    map.removeLayer(routePolyline);
+                }
+
+                routePolyline = L.polyline(coordinates, {
+                    color: '#1a73e8',
+                    weight: 6,
+                    opacity: 0.8
+                }).addTo(map);
+
+                const distanceKm = route.distance / 1000;
+                const banner = document.getElementById('route-banner');
+                banner.innerText = `Route Distance: ${distanceKm.toFixed(2)} km`;
+
+                if (fitBounds) {
+                    const bounds = routePolyline.getBounds();
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+
+                lastRouteCalculationLocation = currentUserLocation ? { lat: currentUserLocation.lat, lng: currentUserLocation.lng } : null;
+                lastRouteCalculationTime = Date.now();
+
+                // Cache successful route for offline use
+                if (placeId) {
+                    db.routes.put({ placeId: placeId, data: data, createdAt: Date.now() }).catch(err => {
+                        console.error("Failed to cache route:", err);
+                    });
+                }
+
+            } catch (err) {
+                console.error(err);
+                if (placeId) {
+                    try {
+                        const cached = await db.routes.get(placeId);
+                        if (cached && cached.data) {
+                            showToast("Offline: Loaded cached route");
+                            const cachedData = cached.data;
+                            const route = cachedData.routes[0];
+                            const coordinates = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+                            currentRouteSteps = calculateStepsFromCoordinates(coordinates);
+                            vibratedTurns = [];
+
+                            if (routePolyline) {
+                                map.removeLayer(routePolyline);
+                            }
+
+                            routePolyline = L.polyline(coordinates, {
+                                color: '#1a73e8',
+                                weight: 6,
+                                opacity: 0.8
+                            }).addTo(map);
+
+                            const distanceKm = route.distance / 1000;
+                            const banner = document.getElementById('route-banner');
+                            banner.innerText = `Route Distance: ${distanceKm.toFixed(2)} km (Cached)`;
+
+                            if (fitBounds) {
+                                const bounds = routePolyline.getBounds();
+                                map.fitBounds(bounds, { padding: [50, 50] });
+                            }
+                            return;
+                        }
+                    } catch (dbErr) {
+                        console.error("Failed to read cached route:", dbErr);
+                    }
+                }
+                showToast("Routing Error: OSRM is offline and no cached route");
+                clearRoute();
+            }
+        }
+
+        function clearRoute() {
+            if (routeStartMarker) {
+                map.removeLayer(routeStartMarker);
+                routeStartMarker = null;
+            }
+            if (routeEndMarker) {
+                map.removeLayer(routeEndMarker);
+                routeEndMarker = null;
+            }
+            if (routePolyline) {
+                map.removeLayer(routePolyline);
+                routePolyline = null;
+            }
+            if (routeDistanceLabel) {
+                map.removeLayer(routeDistanceLabel);
+                routeDistanceLabel = null;
+            }
+
+            routeStartPoint = null;
+            routeEndPoint = null;
+            currentRouteSteps = [];
+            vibratedTurns = [];
+            lastRouteCalculationLocation = null;
+            lastRouteCalculationTime = 0;
+            activeCustomRoutePlaceId = null;
+
+            document.getElementById('route-card').classList.remove('visible');
+
+            const banner = document.getElementById('route-banner');
+            if (routeModeActive) {
+                if (currentUserLocation) {
+                    routeStartPoint = L.latLng(currentUserLocation.lat, currentUserLocation.lng);
+                    banner.innerText = "Route Mode: Tap to set Destination";
+                } else {
+                    banner.innerText = "Route Mode: Tap to set Start point";
+                }
+            }
+        }
+
+        // --- 5. GPS Tracking Logic ---
+        window.startGpsTracking = function () {
+            if (watchId) return;
+
+            gpsBtn.classList.add('active');
+            showToast("GPS Tracking Started");
+
+            watchId = navigator.geolocation.watchPosition(async (pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+
+                currentUserLocation = { lat, lng };
+
+                let heading = null;
+                if (pos.coords.heading !== null && pos.coords.heading !== undefined && !isNaN(pos.coords.heading)) {
+                    heading = pos.coords.heading;
+                    onlineCurrentHeading = heading;
+                } else {
+                    if (!onlineLastHeadingPosition) {
+                        onlineLastHeadingPosition = { lat, lng };
+                    } else {
+                        const dist = getDistance(onlineLastHeadingPosition.lat, onlineLastHeadingPosition.lng, lat, lng);
+                        if (dist > 0.004) { // > 4 meters
+                            heading = calculateBearing(onlineLastHeadingPosition.lat, onlineLastHeadingPosition.lng, lat, lng);
+                            onlineCurrentHeading = heading;
+                            onlineLastHeadingPosition = { lat, lng };
+                        } else {
+                            heading = onlineCurrentHeading;
+                        }
+                    }
+                }
+
+                if (!liveUserMarker) {
+                    liveUserMarker = L.marker([lat, lng], {
+                        icon: createUserMarkerIcon(heading)
+                    }).addTo(map);
+                } else {
+                    liveUserMarker.setLatLng([lat, lng]);
+                    liveUserMarker.setIcon(createUserMarkerIcon(heading));
+                }
+
+                // Auto-center and auto-adjust zoom based on downloaded area maxZoom
+                let targetZoom = 16;
+                try {
+                    const savedAreas = await db.areas.toArray();
+                    let bestArea = null;
+                    for (const area of savedAreas) {
+                        const b = area.bounds;
+                        if (lat <= b.north && lat >= b.south && lng <= b.east && lng >= b.west) {
+                            if (!bestArea || area.maxZoom > bestArea.maxZoom) {
+                                bestArea = area;
+                            }
+                        }
+                    }
+                    if (bestArea) {
+                        targetZoom = bestArea.maxZoom;
+                    }
+                } catch (e) {
+                    console.error("Error reading areas for auto-zoom:", e);
+                }
+
+                if (!userInteracted) {
+                    map.setView([lat, lng], targetZoom);
+                } else {
+                    if (map.getZoom() > targetZoom) {
+                        map.setZoom(targetZoom);
+                    }
+                }
+
+                if (routeModeActive && routeStartPoint && routeEndPoint) {
+                    const now = Date.now();
+                    let shouldRecalc = false;
+
+                    if (!lastRouteCalculationLocation) {
+                        shouldRecalc = true;
+                    } else {
+                        const distMoved = getDistance(lastRouteCalculationLocation.lat, lastRouteCalculationLocation.lng, lat, lng) * 1000;
+                        if (distMoved > 12) {
+                            shouldRecalc = true;
+                        }
+                    }
+
+                    if (shouldRecalc) {
+                        lastRouteCalculationLocation = { lat, lng };
+                        lastRouteCalculationTime = now;
+                        calculateAndShowRoute(false);
+                    }
+                }
+
+                checkRouteTurnProximity(lat, lng);
+                renderAreas();
+                updateDistanceTracker();
+
+            }, (err) => {
+                console.error(err);
+                showToast("GPS Error: " + err.message);
+                gpsBtn.classList.remove('active');
+                watchId = null;
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+                timeout: 10000
+            });
+        };
+
+        window.stopGpsTracking = function () {
+            if (!watchId) return;
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+            gpsBtn.classList.remove('active');
+            if (liveUserMarker) {
+                map.removeLayer(liveUserMarker);
+                liveUserMarker = null;
+            }
+            showToast("GPS Tracking Stopped");
+            currentUserLocation = null;
+            onlineLastHeadingPosition = null;
+            onlineCurrentHeading = null;
+            renderAreas();
+            updateDistanceTracker();
+        };
+
+        gpsBtn.addEventListener('click', () => {
+            if (watchId) {
+                window.stopGpsTracking();
+            } else {
+                userInteracted = false; // Reset interaction flag
+                window.startGpsTracking();
+            }
+        });
+
+        // --- 6. Offline Layer Download Logic ---
+        downloadBtn.addEventListener('click', async () => {
+            const bounds = map.getBounds();
+            const currentZoom = map.getZoom();
+            
+            const minZoom = currentZoom;
+            
+            // Ask user for the detail level (zoom depth)
+            const depthInput = prompt(
+                "Enter zoom detail level:\n1 = Low (Current view only)\n2 = Medium (Current view + 2 levels zoom-in - Recommended)\n3 = High (Current view + 4 levels zoom-in)", 
+                "2"
+            );
+            if (depthInput === null) return;
+            
+            let zoomDepth = 2;
+            if (depthInput === "1") zoomDepth = 0;
+            else if (depthInput === "2") zoomDepth = 2;
+            else if (depthInput === "3") zoomDepth = 4;
+            else {
+                showToast("Invalid choice, defaulting to Medium detail.");
+            }
+
+            const maxZoom = Math.min(currentZoom + zoomDepth, 20);
+
+            let tilesToDownload = [];
+            const style = getTileStyle();
+            for (let z = minZoom; z <= maxZoom; z++) {
+                const nwPoint = map.project(bounds.getNorthWest(), z).divideBy(256).floor();
+                const sePoint = map.project(bounds.getSouthEast(), z).divideBy(256).floor();
+
+                for (let x = nwPoint.x; x <= sePoint.x; x++) {
+                    for (let y = nwPoint.y; y <= sePoint.y; y++) {
+                        const url = `https://mt1.google.com/vt/lyrs=${style}&x=${x}&y=${y}&z=${z}`;
+                        const key = `${style}_${z}_${x}_${y}`;
+                        tilesToDownload.push({ z, x, y, url, key });
+                    }
+                }
+            }
+
+            if (tilesToDownload.length === 0) {
+                showToast("No tiles in the current map view.");
+                return;
+            }
+
+            // Estimate size (avg 25 KB per tile)
+            const estSizeKb = tilesToDownload.length * 25;
+            const estSizeText = estSizeKb >= 1024 
+                ? `~${(estSizeKb / 1024).toFixed(1)} MB` 
+                : `${estSizeKb} KB`;
+
+            // Warning if tile count is very large instead of a hard limit
+            if (tilesToDownload.length > 4000) {
+                const proceed = confirm(`WARNING: This will download ${tilesToDownload.length} tiles (${estSizeText}). This could take a long time and use a lot of storage. Proceed anyway?`);
+                if (!proceed) return;
+            } else if (tilesToDownload.length > 1000) {
+                const proceed = confirm(`This will download ${tilesToDownload.length} tiles (${estSizeText}). Proceed?`);
+                if (!proceed) return;
+            }
+
+            const name = prompt("Enter a name for this offline region:", "My Location");
+            if (name === null) return;
+            const finalName = name.trim() || "Untitled Region";
+
+            const confirmDownload = confirm(`Download ${tilesToDownload.length} tiles (Zooms ${minZoom} to ${maxZoom}) for offline use?\nEstimated size: ${estSizeText}`);
+            if (!confirmDownload) return;
+
+            loadingOverlay.style.display = 'flex';
+            const loadingText = loadingOverlay.querySelector('span');
+            loadingText.innerText = `Downloading offline area... (0/${tilesToDownload.length}) [0 KB]`;
+
+            let downloaded = 0;
+            const failed = [];
+            const areaId = Date.now();
+            let totalBytesDownloaded = 0;
+
+            function formatBytes(bytes) {
+                if (bytes === 0) return '0 KB';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+            }
+
+            try {
+                await db.areas.add({
+                    id: areaId,
+                    name: finalName,
+                    center: { lat: map.getCenter().lat, lng: map.getCenter().lng },
+                    bounds: {
+                        north: bounds.getNorth(),
+                        south: bounds.getSouth(),
+                        east: bounds.getEast(),
+                        west: bounds.getWest()
+                    },
+                    zoom: currentZoom,
+                    minZoom: minZoom,
+                    maxZoom: maxZoom,
+                    timestamp: new Date()
+                });
+
+                const concurrency = 6;
+                let index = 0;
+
+                async function downloadWorker() {
+                    while (index < tilesToDownload.length) {
+                        const tileIndex = index++;
+                        const tile = tilesToDownload[tileIndex];
+                        try {
+                            const existing = await db.tiles.get(tile.key);
+                            if (existing) {
+                                downloaded++;
+                                if (existing.blob) {
+                                    totalBytesDownloaded += existing.blob.size;
+                                }
+                                loadingText.innerText = `Downloading offline area... (${downloaded}/${tilesToDownload.length}) [${formatBytes(totalBytesDownloaded)}]`;
+                                continue;
+                            }
+
+                            const res = await fetch(tile.url);
+                            if (!res.ok) throw new Error("Network response error");
+                            const blob = await res.blob();
+                            totalBytesDownloaded += blob.size;
+
+                            await db.tiles.put({
+                                key: tile.key,
+                                blob: blob,
+                                areaId: areaId
+                            });
+
+                            downloaded++;
+                            loadingText.innerText = `Downloading offline area... (${downloaded}/${tilesToDownload.length}) [${formatBytes(totalBytesDownloaded)}]`;
+                        } catch (err) {
+                            console.error(`Failed to cache tile: ${tile.key}`, err);
+                            failed.push(tile);
+                        }
+                    }
+                }
+
+                const workers = Array(concurrency).fill(null).map(() => downloadWorker());
+                await Promise.all(workers);
+
+                loadingOverlay.style.display = 'none';
+                showToast(`Offline area saved! ${downloaded} tiles cached. ${failed.length ? failed.length + " failed." : ""}`);
+                loadAreas();
+            } catch (err) {
+                console.error("Download failed:", err);
+                loadingOverlay.style.display = 'none';
+                showToast("Download failed");
+            }
+        });
+
+        // --- 7. Saved Areas / Sorting Logic ---
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const lat1Rad = lat1 * Math.PI / 180;
+            const lat2Rad = lat2 * Math.PI / 180;
+
+            const y = Math.sin(dLon) * Math.cos(lat2Rad);
+            const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+                Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+
+            let brng = Math.atan2(y, x) * 180 / Math.PI;
+            return (brng + 360) % 360;
+        }
+
+        function createMarkerIconHtml(heading) {
+            const angle = (heading !== null && heading !== undefined) ? heading : 0;
+            return `
+                <div class="user-location-marker-wrapper">
+                    <div class="user-location-pulse"></div>
+                    <div class="user-location-arrow-container" style="transform: rotate(${angle}deg);">
+                        <svg viewBox="0 0 24 24" style="width: 24px; height: 24px; display: block;">
+                            <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z" fill="#1a73e8" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
+            `;
+        }
+
+        function createUserMarkerIcon(heading) {
+            return L.divIcon({
+                html: createMarkerIconHtml(heading),
+                className: 'user-location-leaflet-marker',
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+            });
+        }
+
+        async function loadAreas() {
+            allAreas = await db.areas.toArray();
+            renderAreas();
+        }
+
+        function renderAreas() {
+            countBadge.innerText = `${allAreas.length} regions`;
+
+            if (allAreas.length === 0) {
+                galleryGrid.innerHTML = '<div style="text-align:center; color:#999; padding:20px;">No offline areas saved.</div>';
+                return;
+            }
+
+            let displayList = [...allAreas];
+
+            if (currentUserLocation) {
+                displayList.forEach(area => {
+                    const b = area.bounds;
+                    area.isLiveInside = (currentUserLocation.lat <= b.north && currentUserLocation.lat >= b.south &&
+                        currentUserLocation.lng >= b.west && currentUserLocation.lng <= b.east);
+                    area.distance = getDistance(
+                        currentUserLocation.lat, currentUserLocation.lng,
+                        area.center.lat, area.center.lng
+                    );
+                });
+
+                displayList.sort((a, b) => {
+                    if (a.isLiveInside && !b.isLiveInside) return -1;
+                    if (!a.isLiveInside && b.isLiveInside) return 1;
+                    return a.distance - b.distance;
+                });
+            } else {
+                displayList.sort((a, b) => b.timestamp - a.timestamp);
+            }
+
+            allAreas = displayList;
+
+            galleryGrid.innerHTML = '';
+            displayList.forEach((area) => {
+                const card = document.createElement('div');
+                card.className = 'snapshot-card';
+
+                const distStr = area.distance !== undefined
+                    ? `<div class="distance-badge">${area.distance.toFixed(2)} km away</div>`
+                    : '';
+
+                const liveBadge = area.isLiveInside
+                    ? `<div style="color: #ea4335; font-size: 11px; font-weight: 700; margin: 2px 0 4px 0; display: flex; align-items: center; gap: 4px;">
+                         <span style="width: 6.5px; height: 6.5px; background-color: #ea4335; border-radius: 50%; display: inline-block;"></span>
+                         Live Inside
+                       </div>`
+                    : '';
+
+                card.innerHTML = `
+                    <div class="snapshot-img-placeholder" style="
+                        width: 110px;
+                        height: 100%;
+                        background: linear-gradient(135deg, #1a73e8, #1557b0);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        flex-shrink: 0;
+                    ">
+                        <svg class="icon" style="width: 40px; height: 40px;" viewBox="0 0 24 24">
+                            <path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z" fill="currentColor"/>
+                        </svg>
+                    </div>
+                    <div class="snapshot-info">
+                        <div class="snapshot-name">${area.name}</div>
+                        <div class="snapshot-coords">Lat: ${area.center.lat.toFixed(3)}, Lng: ${area.center.lng.toFixed(3)}</div>
+                        ${liveBadge}
+                        ${distStr}
+                        <div class="card-actions">
+                            <button class="btn-text btn-view" onclick="gotoArea(${area.id})">SHOW ON MAP</button>
+                            <button class="btn-text btn-edit" onclick="editAreaName(${area.id})">EDIT</button>
+                            <button class="btn-text btn-delete" onclick="deleteArea(${area.id})">DELETE</button>
+                        </div>
+                    </div>
+                `;
+                galleryGrid.appendChild(card);
+            });
+        }
+
+        window.gotoArea = function (id) {
+            db.areas.get(id).then(async area => {
+                if (!area) return;
+
+                // Auto-toggle map label type based on downloaded tiles in this region
+                try {
+                    const firstTile = await db.tiles.where('areaId').equals(id).first();
+                    if (firstTile && firstTile.key) {
+                        const style = firstTile.key.split('_')[0]; // 'y' or 's'
+                        if (style === 'y' && !mapLabelsActive) {
+                            window.setMapLabels(true, true);
+                        } else if (style === 's' && mapLabelsActive) {
+                            window.setMapLabels(false, true);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Failed to auto-toggle map style on gotoArea:", err);
+                }
+                
+                // Open map if not already visible
+                if (!mapContainer.classList.contains('visible')) {
+                    window.toggleMap();
+                }
+
+                const bounds = L.latLngBounds(
+                    [area.bounds.south, area.bounds.west],
+                    [area.bounds.north, area.bounds.east]
+                );
+                map.fitBounds(bounds);
+                showToast(`Centered on region: ${area.name}`);
+            });
+        };
+
+        window.editAreaName = function (id) {
+            db.areas.get(id).then(area => {
+                if (!area) return;
+                const newName = prompt("Rename offline region:", area.name);
+                if (newName !== null && newName.trim() !== "") {
+                    db.areas.update(id, { name: newName.trim() }).then(() => {
+                        showToast("Name updated!");
+                        loadAreas();
+                    });
+                }
+            }).catch(err => {
+                console.error(err);
+                showToast("Failed to rename");
+            });
+        };
+
+        window.deleteArea = function (id) {
+            if (confirm("Delete this offline area and its downloaded tiles?")) {
+                db.areas.delete(id).then(() => {
+                    db.tiles.where('areaId').equals(id).delete().then(() => {
+                        showToast("Offline area deleted");
+                        loadAreas();
+                    });
+                }).catch(err => {
+                    console.error("Delete failed:", err);
+                    showToast("Failed to delete");
+                });
+            }
+        };
+
+        // --- 8. Places Management Logic ---
+        async function loadPlaces() {
+            activePlaceMarkers.forEach(m => map.removeLayer(m));
+            activePlaceMarkers = [];
+
+            try {
+                const places = await db.places.toArray();
+                places.forEach(place => {
+                    createPlaceMarker(place);
+                });
+                updateDistanceTracker();
+            } catch (err) {
+                console.error("Failed to load saved places:", err);
+            }
+        }
+
+        function createPlaceMarker(place) {
+            const marker = L.marker([place.lat, place.lng], { icon: placeIcon }).addTo(map);
+
+            const pathText = place.customRoutePoints && place.customRoutePoints.length > 0 ? "Toggle Path" : "Draw Path";
+            const activePathColor = activeCustomRoutePlaceId === place.id ? "#ea4335" : "#8e24aa";
+
+            marker.bindPopup(`
+                <div style="font-family: inherit; font-size: 12px; padding: 4px; display: flex; flex-direction: column; gap: 8px; min-width: 100px; text-align: center;">
+                    <strong style="color: var(--text-primary); font-size:13px; display:block;">${place.name}</strong>
+                    <div style="display:flex; justify-content: center; gap:16px; margin-top: 4px;">
+                        <button class="btn-text" style="color: #1a73e8; font-size: 13px;" onclick="window.editPlaceName(${place.id})" title="Rename Place">✏️ Rename</button>
+                        <button class="btn-text" style="color: var(--accent-color); font-size: 13px;" onclick="window.deletePlace(${place.id})" title="Delete Place">🗑️ Delete</button>
+                    </div>
+                </div>
+            `);
+
+            marker.on('click', (e) => {
+                if (routeModeActive) {
+                    L.DomEvent.stopPropagation(e);
+                    setTimeout(() => { map.closePopup(); }, 10);
+                    onMapClickForRoute(e);
+                }
+            });
+
+            marker.placeData = place;
+            activePlaceMarkers.push(marker);
+        }
+
+        window.editPlaceName = async function (id) {
+            try {
+                const place = await db.places.get(id);
+                if (!place) return;
+
+                const newName = prompt("Edit name for this place:", place.name);
+                if (newName !== null && newName.trim() !== "") {
+                    await db.places.update(id, { name: newName.trim() });
+                    showToast("Place name updated!");
+                    map.closePopup();
+                    await loadPlaces();
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to edit place name");
+            }
+        };
+
+        window.deletePlace = async function (id) {
+            try {
+                const place = await db.places.get(id);
+                if (!place) return;
+
+                if (confirm(`Delete place "${place.name}"?`)) {
+                    await db.places.delete(id);
+                    showToast(`Deleted "${place.name}"`);
+                    map.closePopup();
+
+                    const marker = activePlaceMarkers.find(m => m.placeData && m.placeData.id === id);
+                    if (marker) {
+                        map.removeLayer(marker);
+                        activePlaceMarkers = activePlaceMarkers.filter(m => m !== marker);
+                    }
+
+                    if (activeCustomRoutePlaceId === id && routePolyline) {
+                        map.removeLayer(routePolyline);
+                        routePolyline = null;
+                        activeCustomRoutePlaceId = null;
+                    }
+
+                    document.getElementById('search-results').classList.remove('visible');
+                    updateDistanceTracker();
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to delete place");
+            }
+        };
+
+        function showAllTooltips() {
+            activePlaceMarkers.forEach(marker => {
+                marker.bindTooltip(marker.placeData.name, {
+                    permanent: true,
+                    direction: 'top',
+                    className: 'custom-place-tooltip'
+                }).openTooltip();
+            });
+        }
+
+        function hideAllTooltips() {
+            activePlaceMarkers.forEach(marker => {
+                marker.unbindTooltip();
+            });
+        }
+
+        async function updateDistanceTracker() {
+            distancePolylines.forEach(l => map.removeLayer(l));
+            distancePolylines = [];
+            distanceLabels.forEach(lbl => map.removeLayer(lbl));
+            distanceLabels = [];
+            proximityLines.forEach(l => map.removeLayer(l));
+            proximityLines = [];
+        }
+
+        // --- 9. Search System ---
+        async function handleSearchInput() {
+            const query = document.getElementById('search-input').value.toLowerCase().trim();
+            const clearBtn = document.getElementById('search-clear-btn');
+            const resultsContainer = document.getElementById('search-results');
+
+            if (query !== "all") {
+                hideAllTooltips();
+            }
+
+            if (query === "") {
+                clearBtn.style.display = 'none';
+                resultsContainer.innerHTML = "";
+                resultsContainer.style.display = 'none';
+                return;
+            }
+
+            clearBtn.style.display = 'flex';
+
+            if (query === "all") {
+                showAllTooltips();
+                const matches = await db.places.toArray();
+                resultsContainer.innerHTML = '<div style="padding:10px; font-size:12px; color:var(--primary-color); font-weight:bold; text-align:center;">Showing all place name tags on map</div>';
+                
+                matches.forEach(place => {
+                    const item = document.createElement('div');
+                    item.className = 'search-result-item';
+                    item.innerHTML = `<span class="place-name-text">${place.name}</span>`;
+                    item.onclick = () => {
+                        map.setView([place.lat, place.lng], 16);
+                        const marker = activePlaceMarkers.find(m => m.getLatLng().lat === place.lat && m.getLatLng().lng === place.lng);
+                        if (marker) {
+                            marker.openPopup();
+                        }
+                        document.getElementById('search-input').value = "";
+                        resultsContainer.style.display = 'none';
+                    };
+                    resultsContainer.appendChild(item);
+                });
+                resultsContainer.style.display = 'block';
+                return;
+            }
+
+            try {
+                const matches = await db.places.filter(p => p.name.toLowerCase().includes(query)).toArray();
+
+                if (matches.length === 0) {
+                    resultsContainer.innerHTML = '<div style="padding:10px; font-size:12px; color:#999; text-align:center;">No places found</div>';
+                    resultsContainer.style.display = 'block';
+                    return;
+                }
+
+                resultsContainer.innerHTML = "";
+                matches.forEach(place => {
+                    const item = document.createElement('div');
+                    item.className = 'search-result-item';
+
+                    // Create Name text span
+                    const textSpan = document.createElement('span');
+                    textSpan.className = 'place-name-text';
+                    textSpan.innerText = place.name;
+
+                    // Create Button Container to hold Route, Draw, Track
+                    const btnContainer = document.createElement('div');
+                    btnContainer.style.display = 'flex';
+                    btnContainer.style.gap = '4px';
+                    btnContainer.onclick = (e) => e.stopPropagation();
+
+                    // Create Route Action button
+                    const routeBtn = document.createElement('button');
+                    routeBtn.className = 'btn-search-route';
+                    routeBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" style="width:12px; height:12px; fill:currentColor;"><path d="M22.41 12.3l-9-9c-.39-.39-1.02-.39-1.41 0l-9 9c-.39.39-.39 1.02 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9c.39-.39.39-1.02 0-1.41zM14 18.5V15h-4v-3h4V8.5L18.5 12 14 18.5z"/></svg>
+                        Route
+                    `;
+                    routeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        window.calculateRouteToPlace(place.id, e);
+                    };
+
+                    // Create Draw button
+                    const drawBtn = document.createElement('button');
+                    drawBtn.className = 'btn-search-route';
+                    drawBtn.style.backgroundColor = '#8e24aa';
+                    drawBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" style="width:12px; height:12px; fill:currentColor;"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                        Draw
+                    `;
+                    drawBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        window.startCustomPathDrawing(place.id, e);
+                    };
+
+                    // Create Track button
+                    const trackBtn = document.createElement('button');
+                    trackBtn.className = 'btn-search-route';
+                    trackBtn.style.backgroundColor = '#e27200';
+                    trackBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" style="width:12px; height:12px; fill:currentColor;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.83 0-.38.03-.75.09-1.12L9 14v1c0 1.1.9 2 2 2v2.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                        Track
+                    `;
+                    trackBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        window.trackCustomRoute(place.id, e);
+                    };
+
+                    btnContainer.appendChild(routeBtn);
+                    btnContainer.appendChild(drawBtn);
+                    btnContainer.appendChild(trackBtn);
+
+                    // Set item click to zoom
+                    item.onclick = () => {
+                        map.setView([place.lat, place.lng], 16);
+                        const marker = activePlaceMarkers.find(m => m.getLatLng().lat === place.lat && m.getLatLng().lng === place.lng);
+                        if (marker) {
+                            marker.openPopup();
+                        }
+                        document.getElementById('search-input').value = "";
+                        resultsContainer.style.display = 'none';
+                    };
+
+                    item.appendChild(textSpan);
+                    item.appendChild(btnContainer);
+                    resultsContainer.appendChild(item);
+                });
+                resultsContainer.style.display = 'block';
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        window.calculateRouteToPlace = async function (placeId, event) {
+            if (event) {
+                event.stopPropagation();
+            }
+
+            // Ensure GPS tracking is running
+            if (!watchId) {
+                window.startGpsTracking();
+            }
+
+            if (!currentUserLocation) {
+                showToast("Locating your position...");
+                let attempts = 0;
+                const checkLocationInterval = setInterval(async () => {
+                    attempts++;
+                    if (currentUserLocation) {
+                        clearInterval(checkLocationInterval);
+                        await performRouteToPlace(placeId);
+                    } else if (attempts >= 10) { // 5 seconds timeout
+                        clearInterval(checkLocationInterval);
+                        showToast("GPS timeout. Please check device location settings.");
+                    }
+                }, 500);
+                return;
+            }
+
+            await performRouteToPlace(placeId);
+        };
+
+        async function performRouteToPlace(placeId) {
+            try {
+                const place = await db.places.get(placeId);
+                if (!place) {
+                    showToast("Place not found");
+                    return;
+                }
+
+                // Hide search results
+                document.getElementById('search-results').style.display = 'none';
+                document.getElementById('search-input').value = "";
+
+                // Activate Route Planner
+                if (!routeModeActive) {
+                    window.toggleRouteMode();
+                }
+
+                // Draw route points
+                clearRoute();
+                routeStartPoint = L.latLng(currentUserLocation.lat, currentUserLocation.lng);
+                routeEndPoint = L.latLng(place.lat, place.lng);
+                routeEndMarker = L.marker(routeEndPoint, { icon: endIcon }).addTo(map);
+
+                calculateAndShowRoute(true, placeId);
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to generate route");
+            }
+        }
+
+        window.trackCustomRoute = async function (placeId, event) {
+            if (event) event.stopPropagation();
+
+            // Close search results and search bar
+            document.getElementById('search-results').style.display = 'none';
+            document.getElementById('search-input').value = "";
+            window.closeSearchBar();
+
+            try {
+                const place = await db.places.get(placeId);
+                if (!place || !place.customRoutePoints || place.customRoutePoints.length === 0) {
+                    showToast("No custom route drawn for this place. Click Draw first!");
+                    return;
+                }
+
+                // Clear any existing route
+                clearRoute();
+                activeCustomRoutePlaceId = placeId;
+
+                // Construct path coordinates starting from user location if available
+                let latlngs = [];
+                if (currentUserLocation) {
+                    latlngs.push([currentUserLocation.lat, currentUserLocation.lng]);
+                }
+
+                // Append custom route points
+                place.customRoutePoints.forEach(p => {
+                    latlngs.push([p[0], p[1]]);
+                });
+
+                // Draw route line
+                if (routePolyline) map.removeLayer(routePolyline);
+                routePolyline = L.polyline(latlngs, {
+                    color: '#8e24aa', // Purple color for custom routes
+                    weight: 6,
+                    opacity: 0.8,
+                    lineJoin: 'round'
+                }).addTo(map);
+
+                // Double click on custom route polyline to delete it
+                routePolyline.on('dblclick', (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    if (activeCustomRoutePlaceId) {
+                        if (confirm("Do you want to delete this custom route?")) {
+                            deleteCustomRoute(activeCustomRoutePlaceId);
+                        }
+                    }
+                });
+
+                // Add end marker
+                routeEndPoint = L.latLng(place.lat, place.lng);
+                routeEndMarker = L.marker(routeEndPoint, { icon: endIcon }).addTo(map);
+
+                // Zoom map to show the custom route
+                map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+
+                // Calculate steps for vibration turn alerts
+                currentRouteSteps = calculateStepsFromCoordinates(latlngs);
+                vibratedTurns = [];
+
+                let totalDist = 0;
+                for (let i = 0; i < latlngs.length - 1; i++) {
+                    totalDist += getDistance(latlngs[i][0], latlngs[i][1], latlngs[i+1][0], latlngs[i+1][1]);
+                }
+                const banner = document.getElementById('route-banner');
+                banner.innerText = `Route Distance: ${totalDist.toFixed(2)} km`;
+                banner.classList.add('visible');
+
+                showToast(`Tracking custom route for: ${place.name}`);
+            } catch (err) {
+                console.error("Failed to track custom route:", err);
+                showToast("Failed to start custom tracking");
+            }
+        };
+
+        window.deleteCustomRoute = function (placeId) {
+            db.places.update(placeId, { customRoutePoints: [] }).then(() => {
+                showToast("Custom route deleted");
+                clearRoute();
+                loadPlaces();
+            });
+        };
+
+        document.addEventListener('click', (e) => {
+            const container = document.getElementById('search-container');
+            const results = document.getElementById('search-results');
+            if (container && !container.contains(e.target) && results) {
+                results.style.display = 'none';
+            }
+        });
+
+        window.clearSearchInput = function () {
+            const input = document.getElementById('search-input');
+            input.value = '';
+            handleSearchInput();
+            input.focus();
+        };
+
+        // --- 10. Vibration Navigation ---
+        window.toggleVibrationNavigation = function () {
+            vibrationNavigationActive = !vibrationNavigationActive;
+            const btn = document.getElementById('vibrate-toggle-btn');
+            if (vibrationNavigationActive) {
+                btn.style.backgroundColor = '#e27200';
+                showToast("Vibration Navigation Active");
+
+                playAudioVoiceAlert("Active");
+                playBeep(1000, 150);
+
+                if (navigator.vibrate) {
+                    navigator.vibrate([200, 100, 200]);
+                }
+            } else {
+                btn.style.backgroundColor = 'var(--text-secondary)';
+                showToast("Vibration Navigation Disabled");
+            }
+        };
+
+        function checkRouteTurnProximity(userLat, userLng) {
+            if (!vibrationNavigationActive || !currentRouteSteps || currentRouteSteps.length === 0) return;
+
+            let nextTurn = null;
+
+            for (let i = 0; i < currentRouteSteps.length; i++) {
+                const step = currentRouteSteps[i];
+                if (!step.maneuver || !step.maneuver.location) continue;
+
+                const modifier = step.maneuver.modifier;
+                if (!modifier) continue;
+
+                const m = modifier.toLowerCase();
+                const isLeft = m.includes('left');
+                const isRight = m.includes('right');
+
+                if (isLeft || isRight) {
+                    nextTurn = { step, isLeft, isRight };
+                    break;
+                }
+            }
+
+            if (!nextTurn) return;
+
+            const turnLng = nextTurn.step.maneuver.location[0];
+            const turnLat = nextTurn.step.maneuver.location[1];
+            const distanceMeters = getDistance(userLat, userLng, turnLat, turnLng) * 1000;
+
+            let alreadyVibrated = false;
+            for (let i = 0; i < vibratedTurns.length; i++) {
+                const vt = vibratedTurns[i];
+                const d = getDistance(turnLat, turnLng, vt.lat, vt.lng) * 1000;
+                if (d < 30) {
+                    alreadyVibrated = true;
+                    
+                    const distFromUser = getDistance(userLat, userLng, vt.lat, vt.lng) * 1000;
+                    if (distFromUser > 40) {
+                        vibratedTurns.splice(i, 1);
+                        alreadyVibrated = false; 
+                    }
+                    break;
+                }
+            }
+
+            if (alreadyVibrated) return;
+
+            if (distanceMeters <= 15) {
+                vibratedTurns.push({ lat: turnLat, lng: turnLng, time: Date.now() });
+
+                if (vibratedTurns.length > 5) {
+                    vibratedTurns.shift();
+                }
+
+                const direction = nextTurn.isLeft ? "LEFT" : "RIGHT";
+
+                playAudioVoiceAlert(direction);
+                if (nextTurn.isLeft) {
+                    playBeep(800, 300);
+                } else if (nextTurn.isRight) {
+                    playBeep(1200, 300);
+                    setTimeout(() => playBeep(1200, 300), 500);
+                    setTimeout(() => playBeep(1200, 300), 1000);
+                }
+
+                if (navigator.vibrate) {
+                    if (nextTurn.isLeft) {
+                        navigator.vibrate(1000);
+                        showToast("Turn LEFT ahead! 📳");
+                    } else if (nextTurn.isRight) {
+                        navigator.vibrate(3000);
+                        showToast("Turn RIGHT ahead! 📳📳📳");
+                    }
+                } else {
+                    showToast(`Turn approaching: ${direction} in ${distanceMeters.toFixed(0)}m`);
+                }
+            }
+        }
+
+        function playAudioVoiceAlert(direction) {
+            try {
+                if (window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                    const phrase = direction === "Active" ? "Vibration navigation active" : `Turn ${direction.toLowerCase()} in ten meters`;
+                    const speech = new SpeechSynthesisUtterance(phrase);
+                    speech.lang = 'en-US';
+                    speech.rate = 1.0;
+                    speech.pitch = 1.0;
+                    window.speechSynthesis.speak(speech);
+                }
+            } catch (e) {
+                console.warn("Speech Synthesis failed:", e);
+            }
+        }
+
+        function playBeep(frequency, durationMs) {
+            try {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContextClass) return;
+
+                const audioCtx = new AudioContextClass();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.frequency.value = frequency;
+                oscillator.type = 'sine';
+
+                gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + durationMs / 1000);
+
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + durationMs / 1000);
+            } catch (e) {
+                console.warn("Beep failed:", e);
+            }
+        }
+
+        function showToast(msg) {
+            if (window.AndroidNative && typeof window.AndroidNative.showNativeToast === 'function') {
+                try {
+                    window.AndroidNative.showNativeToast(msg);
+                    return;
+                } catch (e) {
+                    console.error("Native toast failed:", e);
+                }
+            }
+            toast.innerText = msg;
+            toast.className = "show";
+            setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+        }
+
+        // --- 11. Initial Load & Wake Lock ---
+        loadAreas();
+        loadPlaces();
+
+        // Make map and its controls visible on startup by default
+        mapContainer.classList.add('visible');
+        downloadBtn.style.display = 'flex';
+        document.getElementById('route-mode-btn').style.display = 'flex';
+        document.getElementById('add-place-btn').style.display = 'flex';
+        document.getElementById('search-toggle-btn').style.display = 'flex';
+        document.getElementById('label-toggle-btn').style.display = 'flex';
+        document.getElementById('vibrate-toggle-btn').style.display = 'flex';
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 100);
+
+        let wakeLock = null;
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake Lock active!');
+                }
+            } catch (err) {
+                console.warn(`Wake Lock Error: ${err.message}`);
+            }
+        }
+
+        requestWakeLock();
+
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                await requestWakeLock();
+            }
+        });
+    </script>
+</body>
+
+</html>
