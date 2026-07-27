@@ -18,7 +18,7 @@ Key highlights:
 
 ## 🚀 Live Demo
 (Replace with your live demo URL when available)
-https://your-username.github.io/OffMap/
+https://nikhilkumarmaurya.github.io/offmap/
 
 ---
 
@@ -65,11 +65,6 @@ No build step required.
 
 ---
 
-## 🖼️ Screenshots
-Add screenshots in `assets/images/screenshots/` and reference them here:
-![OffMap screenshot](assets/images/screenshots/desktop.png)
-
----
 
 ## ✨ How to customize (examples)
 - Change primary color:
@@ -160,7 +155,7 @@ MIT © [Nikhil Kumar Maurya]
 ---
 
 ## 📬 Contact / Author
-Nikhil Kumar Maurya — https://github.com/nikhilkumarmaurya/offmap
+Nikhil Kumar Maurya
 
 ---
 
